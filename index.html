@@ -164,6 +164,19 @@ textarea[readonly]{cursor:default}
 #sections-list{display:flex;flex-direction:column;gap:0}
 .sec-gap{height:0}
 
+/* ── Lightbox ── */
+.lb-overlay{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:10000;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .18s;pointer-events:none}
+.lb-overlay.show{opacity:1;pointer-events:all}
+.lb-img{max-width:92vw;max-height:88vh;border-radius:6px;object-fit:contain;transform:scale(.94);transition:transform .18s;box-shadow:0 8px 40px rgba(0,0,0,.5);user-select:none}
+.lb-overlay.show .lb-img{transform:scale(1)}
+.lb-close{position:fixed;top:18px;right:22px;color:#fff;font-size:26px;cursor:pointer;opacity:.7;transition:opacity .15s;background:none;border:none;line-height:1;padding:4px 8px}
+.lb-close:hover{opacity:1}
+.lb-nav{position:fixed;top:50%;transform:translateY(-50%);color:#fff;font-size:32px;cursor:pointer;opacity:.5;transition:opacity .15s;background:none;border:none;padding:8px 14px;line-height:1;user-select:none}
+.lb-nav:hover{opacity:1}
+.lb-prev{left:12px}
+.lb-next{right:12px}
+.lb-info{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,.6);font-size:12px;font-family:var(--mono);white-space:nowrap}
+
 /* ── Multi-select ── */
 .gal-img.selected{border-color:var(--blue);box-shadow:0 0 0 2px var(--blue-bd)}
 .gal-sel-check{position:absolute;top:3px;left:3px;background:var(--blue);color:#fff;width:16px;height:16px;border-radius:50%;font-size:9px;display:flex;align-items:center;justify-content:center;pointer-events:none;line-height:1}
@@ -241,6 +254,15 @@ textarea[readonly]{cursor:default}
 
 </div>
 <div id="toast" class="toast"></div>
+
+<!-- 라이트박스 -->
+<div class="lb-overlay" id="lb-overlay" onclick="lbClose()">
+  <button class="lb-close" onclick="lbClose()">✕</button>
+  <button class="lb-nav lb-prev" onclick="lbMove(-1,event)">‹</button>
+  <img class="lb-img" id="lb-img" src="" onclick="event.stopPropagation()">
+  <button class="lb-nav lb-next" onclick="lbMove(1,event)">›</button>
+  <div class="lb-info" id="lb-info"></div>
+</div>
 
 <script>
 // ──────────────────────────────────────────
@@ -599,8 +621,14 @@ function updateSelUI(wrap, si) {
 // ── Drag & click ──
 function bindGalleryDrag(wrap, si) {
   wrap.querySelectorAll('.gal-img').forEach(el => {
-    el.addEventListener('click', e => {
-      if (e.target.classList.contains('gal-del')) return;
+    el.addEventListener('dblclick', e => {
+      e.stopPropagation();
+      const sec = sections[si];
+      const urls = sec.images.map(img => imgUrl(sec.serverDate, img.filename));
+      const idx  = +el.dataset.img;
+      lbOpen(urls, idx);
+    });
+    el.addEventListener('click', e => {      if (e.target.classList.contains('gal-del')) return;
       e.stopPropagation();
       const sec = sections[si];
       const fn = el.dataset.filename; if (!fn) return;
@@ -718,6 +746,41 @@ function makeAddZone(insertIdx) {
   });
   return div;
 }
+
+// ──────────────────────────────────────────
+//  Lightbox
+// ──────────────────────────────────────────
+let lbUrls = [];
+let lbIdx  = 0;
+
+function lbOpen(urls, idx) {
+  lbUrls = urls; lbIdx = idx;
+  lbShow();
+  document.getElementById('lb-overlay').classList.add('show');
+}
+function lbShow() {
+  const url = lbUrls[lbIdx];
+  document.getElementById('lb-img').src = url;
+  document.getElementById('lb-info').textContent =
+    `${lbIdx + 1} / ${lbUrls.length}  ·  ${url.split('/').pop()}`;
+}
+function lbClose() {
+  document.getElementById('lb-overlay').classList.remove('show');
+  setTimeout(() => { document.getElementById('lb-img').src = ''; }, 200);
+}
+function lbMove(dir, e) {
+  e.stopPropagation();
+  lbIdx = (lbIdx + dir + lbUrls.length) % lbUrls.length;
+  lbShow();
+}
+
+document.addEventListener('keydown', e => {
+  const overlay = document.getElementById('lb-overlay');
+  if (!overlay.classList.contains('show')) return;
+  if (e.key === 'Escape')      { lbClose(); }
+  else if (e.key === 'ArrowRight') { lbIdx = (lbIdx + 1) % lbUrls.length; lbShow(); }
+  else if (e.key === 'ArrowLeft')  { lbIdx = (lbIdx - 1 + lbUrls.length) % lbUrls.length; lbShow(); }
+});
 
 // ──────────────────────────────────────────
 //  Image checker
