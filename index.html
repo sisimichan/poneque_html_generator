@@ -200,21 +200,7 @@ textarea[readonly]{cursor:default}
   <!-- ── 기본 설정 ── -->
   <div class="card">
     <div class="card-title">기본 설정</div>
-    <div class="field-row">
-      <div class="field" style="max-width:150px">
-        <label>서버 날짜</label>
-        <input type="text" id="detail-date" placeholder="2026/02/04" onblur="applyNormDate(this)">
-      </div>
-      <div class="field">
-        <label>디테일 이미지명</label>
-        <input type="text" id="detail-img" placeholder="260204_detail_TOP_0070.jpg">
-      </div>
-    </div>
-    <div class="field" style="max-width:210px">
-      <label>스냅핏 차트 ID <span style="color:var(--td);font-weight:400">(비워두면 미포함)</span></label>
-      <input type="text" id="snapfit-id" placeholder="626946">
-    </div>
-    <div class="switch-row">
+    <div class="switch-row" style="border-top:none;padding-top:0;margin-top:0">
       <div>
         <div class="switch-label">밝은 컬러 안내 문구 포함</div>
         <div class="switch-sub">*밝은 컬러의 경우 비칠 우려가 있으니…</div>
@@ -233,6 +219,25 @@ textarea[readonly]{cursor:default}
   </div>
 
   <div id="sections-list"></div>
+
+  <!-- ── 디테일 & 스냅핏 (하단) ── -->
+  <div class="card" style="margin-top:16px">
+    <div class="card-title">디테일 & 스냅핏</div>
+    <div class="field-row">
+      <div class="field" style="max-width:150px">
+        <label>서버 날짜</label>
+        <input type="text" id="detail-date" placeholder="2026/02/04" onblur="applyNormDate(this)">
+      </div>
+      <div class="field">
+        <label>디테일 이미지명</label>
+        <input type="text" id="detail-img" placeholder="260204_detail_TOP_0070.jpg">
+      </div>
+    </div>
+    <div class="field">
+      <label>스냅핏 차트 코드 <span style="color:var(--td);font-weight:400">(비워두면 미포함)</span></label>
+      <textarea id="snapfit-code" rows="5" placeholder="스냅핏 차트 코드 전체를 붙여넣으세요 (&lt;style&gt; ~ &lt;iframe&gt; 또는 관련 스크립트 전체)"></textarea>
+    </div>
+  </div>
 
   <!-- ── 생성 ── -->
   <div class="btn-row">
@@ -287,13 +292,16 @@ const uid  = () => Math.random().toString(36).slice(2,8);
 const escQ = s => (s||'').replace(/"/g,'&quot;');
 const escH = s => (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
+const BASE_URL = 'http://kclubcokr.cafe24.com/web/poneque';
+const imgCheckCache = new Map(); // url → boolean
+
 function toast(msg) {
   const el = document.getElementById('toast');
   el.textContent = msg; el.classList.add('show');
   clearTimeout(_toastT);
   _toastT = setTimeout(() => el.classList.remove('show'), 2300);
 }
-function imgUrl(d, f) { return `http://kclubcokr.cafe24.com/web/poneque/${d}/${f}`; }
+function imgUrl(d, f) { return `${BASE_URL}/${d}/${f}`; }
 
 // ──────────────────────────────────────────
 //  Undo
@@ -306,6 +314,8 @@ function doUndo() {
   if (!undoStack.length) { toast('되돌릴 작업이 없습니다'); return; }
   sections = undoStack.pop();
   galSelected.clear();
+  dragSrcIdx = null;
+  galDragSec = null;
   renderAll();
   toast('↩ 되돌리기');
 }
@@ -638,42 +648,69 @@ function updateSelUI(wrap, si) {
 // ── Drag & click ──
 function bindGalleryDrag(wrap, si) {
   wrap.querySelectorAll('.gal-img').forEach(el => {
+    let _clickT = null;
+
     el.addEventListener('dblclick', e => {
       e.stopPropagation();
+      // 대기 중인 단일 클릭 취소
+      if (_clickT) { clearTimeout(_clickT); _clickT = null; }
       const sec = sections[si];
       const urls = sec.images.map(img => imgUrl(sec.serverDate, img.filename));
       const idx  = +el.dataset.img;
       lbOpen(urls, idx);
     });
-    el.addEventListener('click', e => {      if (e.target.classList.contains('gal-del')) return;
+
+    el.addEventListener('click', e => {
+      if (e.target.classList.contains('gal-del')) return;
       e.stopPropagation();
-      const sec = sections[si];
-      const fn = el.dataset.filename; if (!fn) return;
-      if (!galSelected.has(sec.id)) galSelected.set(sec.id, new Set());
-      const sel = galSelected.get(sec.id);
-      if (e.shiftKey && galLastClick.has(sec.id)) {
-        const last = galLastClick.get(sec.id);
-        const imgs = sec.images;
-        const li = imgs.findIndex(img => img.filename === last);
-        const ci = +el.dataset.img;
-        const [fr, to] = [Math.min(li,ci), Math.max(li,ci)];
-        for (let k = fr; k <= to; k++) sel.add(imgs[k].filename);
-      } else if (e.ctrlKey || e.metaKey || e.altKey) {
-        if (sel.has(fn)) sel.delete(fn); else sel.add(fn);
-        galLastClick.set(sec.id, fn);
-      } else {
-        sel.clear(); sel.add(fn);
-        galLastClick.set(sec.id, fn);
-      }
-      updateSelUI(wrap, si);
-      wrap.querySelectorAll('.gal-img').forEach(item => {
-        const f = item.dataset.filename;
-        const isSel = sel.has(f);
-        item.classList.toggle('selected', isSel);
-        const chk = item.querySelector('.gal-sel-check');
-        if (isSel && !chk) { const d = document.createElement('div'); d.className='gal-sel-check'; d.textContent='✓'; item.appendChild(d); }
-        else if (!isSel && chk) chk.remove();
-      });
+      // 이미 대기 중이면 무시 (dblclick 대기 중)
+      if (_clickT) { clearTimeout(_clickT); _clickT = null; return; }
+
+      // dblclick 가능성 있는 이벤트는 플래그 복사
+      const ev = {
+        shiftKey: e.shiftKey,
+        ctrlKey:  e.ctrlKey,
+        metaKey:  e.metaKey,
+        altKey:   e.altKey,
+      };
+
+      _clickT = setTimeout(() => {
+        _clickT = null;
+        const sec = sections[si];
+        const fn = el.dataset.filename; if (!fn) return;
+        if (!galSelected.has(sec.id)) galSelected.set(sec.id, new Set());
+        const sel = galSelected.get(sec.id);
+
+        if (ev.shiftKey && galLastClick.has(sec.id)) {
+          const last = galLastClick.get(sec.id);
+          const imgs = sec.images;
+          const li = imgs.findIndex(img => img.filename === last);
+          const ci = +el.dataset.img;
+          const [fr, to] = [Math.min(li, ci), Math.max(li, ci)];
+          for (let k = fr; k <= to; k++) sel.add(imgs[k].filename);
+        } else if (ev.ctrlKey || ev.metaKey || ev.altKey) {
+          if (sel.has(fn)) sel.delete(fn); else sel.add(fn);
+          galLastClick.set(sec.id, fn);
+        } else {
+          sel.clear(); sel.add(fn);
+          galLastClick.set(sec.id, fn);
+        }
+        updateSelUI(wrap, si);
+        wrap.querySelectorAll('.gal-img').forEach(item => {
+          const f = item.dataset.filename;
+          const isSel = sel.has(f);
+          item.classList.toggle('selected', isSel);
+          const chk = item.querySelector('.gal-sel-check');
+          if (isSel && !chk) {
+            const d = document.createElement('div');
+            d.className = 'gal-sel-check';
+            d.textContent = '✓';
+            item.appendChild(d);
+          } else if (!isSel && chk) {
+            chk.remove();
+          }
+        });
+      }, 220);
     });
     el.addEventListener('dragstart', e => {
       const sec = sections[si];
@@ -713,7 +750,11 @@ function bindGalleryDrag(wrap, si) {
         const [mv] = imgs.splice(fromImg, 1); imgs.splice(toImg, 0, mv);
         toast('이미지 순서 변경됨');
       }
-      galDragSec = null; refreshGallery(wrap, si); updateSelUI(wrap, si);
+      // 드래그 완료 후 선택 해제
+      galSelected.set(sec.id, new Set());
+      galDragSec = null;
+      refreshGallery(wrap, si);
+      updateSelUI(wrap, si);
     });
   });
 }
@@ -795,12 +836,13 @@ function lbMove(dir, e) {
 //  Image checker
 // ──────────────────────────────────────────
 function checkImg(url) {
+  if (imgCheckCache.has(url)) return Promise.resolve(imgCheckCache.get(url));
   return new Promise(resolve => {
     const img = new Image();
-    const t = setTimeout(() => resolve(false), 8000);
-    img.onload  = () => { clearTimeout(t); resolve(true); };
-    img.onerror = () => { clearTimeout(t); resolve(false); };
-    img.src = url + '?_=' + Date.now();
+    const t = setTimeout(() => { imgCheckCache.set(url, false); resolve(false); }, 8000);
+    img.onload  = () => { clearTimeout(t); imgCheckCache.set(url, true);  resolve(true); };
+    img.onerror = () => { clearTimeout(t); imgCheckCache.set(url, false); resolve(false); };
+    img.src = url;
   });
 }
 
@@ -810,7 +852,7 @@ function checkImg(url) {
 async function generate() {
   const detailImg  = document.getElementById('detail-img').value.trim();
   const detailDate = document.getElementById('detail-date').value.trim();
-  const snapfitId  = document.getElementById('snapfit-id').value.trim();
+  const snapfitCode = document.getElementById('snapfit-code').value.trim();
   const showWarn   = document.getElementById('toggle-warning').checked;
 
   let introUrl = null;
@@ -844,7 +886,7 @@ async function generate() {
     if (ok) validSet.add(url); else removed.push(url.split('/').pop().split('?')[0]);
   }));
 
-  sections.forEach((sec) => {
+  sections.forEach((sec, si) => {
     const card = document.querySelector(`.sec-card[data-secid="${sec.id}"]`);
     const removedInSec = sec.images.filter(img => !validSet.has(imgUrl(sec.serverDate, img.filename)));
     if (removedInSec.length === 0) { if (card) card.querySelector('.gallery-removed').style.display = 'none'; return; }
@@ -852,7 +894,6 @@ async function generate() {
     const s = galSelected.get(sec.id); if (s) removedInSec.forEach(img => s.delete(img.filename));
     openGalleries.add(sec.id);
     if (card) {
-      const si = sections.indexOf(sec);
       refreshGallery(card, si);
       card.querySelector('.sec-gallery').classList.add('open');
       card.querySelector('[data-arrow]').classList.add('open');
@@ -884,7 +925,7 @@ async function generate() {
   }
   for (const sec of sections) {
     if (!sec.images.length) continue;
-    const label = (sec.comment||sec.name).trim();
+    const label = (sec.comment || sec.name).trim().replace(/-->/g, '--&gt;');
     html += `\n\t<!--${label}-->\n\n`;
     for (const img of sec.images) html += `\t<p style="text-align: center;"><img src="${imgUrl(sec.serverDate, img.filename)}"></p>\n${BR5}\n\n`;
   }
@@ -892,14 +933,10 @@ async function generate() {
     const du = imgUrl(detailDate, detailImg);
     if (validSet.has(du)) { html += `\n\t<!--디테일-->\n\n\t<p style="text-align: center;"><img src="${du}"></p>\n${BR5}\n`; }
   }
-  if (snapfitId) {
-    html += `\n\t<!--스냅핏-->\n\t<!---스냅핏 차트 시작 --->\n`;
-    [['768','415','1175'],['414','376','1182'],['375','361','1182'],['360','321','1182']].forEach(([mx,mn,h]) => {
-      html += `\t<style>\n\t\t@media (max-width: ${mx}px) and (min-width: ${mn}px) {\n\t\t\t.sf_chart_iframe_id_${snapfitId} {\n\t\t\t\theight: ${h}px !important; width: 100% !important; max-width: ${mx}px !important; min-width: ${mn}px !important;\n\t\t\t}\n\t\t}\n\t</style>\n`;
-    });
-    html += `\t<style>\n\t\t@media (max-width: 320px) {\n\t\t\t.sf_chart_iframe_id_${snapfitId} {\n\t\t\t\theight: 1206px !important; width: 100% !important; max-width: 320px !important;\n\t\t\t}\n\t\t}\n\t</style>\n`;
-    html += `\t<iframe id="sf_chart_iframe_id" class="sf_chart_iframe_id_${snapfitId}" border="0" src="//cdn.snapfit.co.kr/stores/poneque/chart/${snapfitId}.html" frameborder="0" height="1165" width="100%" scrolling="no"> </iframe>\n`;
-    html += `\t<input id="sf_store_id" type="hidden" value="1984">\n\t<input id="sf_chart_id" type="hidden" value="${snapfitId}">\n\t<!---- 스냅핏 차트 종료 --->\n`;
+  if (snapfitCode) {
+    // 탭 들여쓰기로 각 줄 정렬 (원본 HTML의 들여쓰기 스타일과 맞춤)
+    const indented = snapfitCode.split('\n').map(line => '\t' + line).join('\n');
+    html += `\n\t<!--스냅핏-->\n${indented}\n`;
   }
   html += `\n</div>`;
 
