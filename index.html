@@ -1,0 +1,931 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>상세페이지 HTML 생성기</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f5f5f3;--card:#fff;--border:#e5e5e3;--border2:#d0d0ce;
+  --t:#1a1a1a;--tm:#888;--td:#bbb;
+  --surface:#fafafa;--surface2:#f0f0ee;
+  --ink:#1a1a1a;--ink-inv:#fff;
+  --green:#16a34a;--green-bg:#f0fdf4;--green-bd:#86efac;
+  --red:#dc2626;--red-bg:#fff1f1;--red-bd:#fca5a5;
+  --blue:#2563eb;--blue-bg:#eff6ff;--blue-bd:#93c5fd;
+  --amber-bg:#fffbeb;--amber-bd:#fcd34d;--amber-t:#92400e;
+  --mono:'Courier New',monospace;
+  --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+}
+body{background:var(--bg);color:var(--t);font-family:var(--sans);font-size:14px;line-height:1.6;min-height:100vh}
+
+header{background:var(--card);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:50}
+header h1{font-size:15px;font-weight:700}
+header span{font-size:12px;color:var(--tm)}
+
+.app{max-width:880px;margin:0 auto;padding:24px 16px 80px}
+
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:16px}
+.card-title{font-size:11px;font-weight:700;color:var(--tm);letter-spacing:.07em;text-transform:uppercase;margin-bottom:14px}
+
+.field{margin-bottom:10px}
+.field:last-child{margin-bottom:0}
+.field label{display:block;font-size:12px;color:var(--tm);margin-bottom:4px}
+.hint{font-size:11px;color:var(--td);margin-top:3px}
+
+input[type="text"],select{background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--t);font-family:var(--sans);font-size:13px;padding:7px 10px;outline:none;transition:border-color .15s;width:100%}
+input[type="text"]:focus,select:focus{border-color:#555;background:var(--card)}
+input[type="text"]::placeholder{color:var(--td)}
+select{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px}
+
+.field-row{display:flex;gap:8px;align-items:flex-start}
+.field-row .field{flex:1;margin-bottom:0}
+
+.switch-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0 0;border-top:1px solid var(--surface2);margin-top:8px}
+.switch-label{font-size:13px;color:var(--t)}
+.switch-sub{font-size:11px;color:var(--td);margin-top:2px}
+.switch{position:relative;width:40px;height:22px;flex-shrink:0}
+.switch input{opacity:0;width:0;height:0}
+.slider{position:absolute;cursor:pointer;inset:0;background:#ddd;border-radius:22px;transition:background .2s}
+.slider:before{content:'';position:absolute;width:16px;height:16px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:transform .2s}
+.switch input:checked + .slider{background:var(--ink)}
+.switch input:checked + .slider:before{transform:translateX(18px)}
+
+.btn{display:inline-flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--border2);color:var(--t);font-family:var(--sans);font-size:13px;font-weight:500;padding:8px 16px;border-radius:8px;cursor:pointer;transition:all .15s;white-space:nowrap}
+.btn:hover{background:var(--surface2);border-color:#aaa}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-primary{background:var(--ink);color:var(--ink-inv);border-color:var(--ink)}
+.btn-primary:hover:not(:disabled){background:#333;border-color:#333}
+.btn-sm{padding:5px 12px;font-size:12px}
+.btn-row{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:center}
+
+.step-lbl{font-size:11px;font-weight:700;color:var(--tm);letter-spacing:.07em;text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;gap:10px}
+.step-lbl::after{content:'';flex:1;height:1px;background:var(--border)}
+.step-note{font-size:10px;color:var(--td);margin-left:2px;letter-spacing:0;text-transform:none;font-weight:400}
+
+/* ── 인트로 카드 ── */
+.intro-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 20px;margin-bottom:0}
+.intro-card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.intro-card-title{font-size:11px;font-weight:700;color:var(--tm);letter-spacing:.07em;text-transform:uppercase}
+.intro-del-btn{background:none;border:1px solid var(--red-bd);color:var(--red);font-size:11px;padding:3px 10px;border-radius:6px;cursor:pointer;transition:all .15s}
+.intro-del-btn:hover{background:var(--red-bg)}
+.ext-select{width:90px;flex-shrink:0}
+
+/* ── 인트로 없을 때 추가 버튼 ── */
+.intro-add-zone{padding:5px 0;margin-bottom:0}
+.intro-add-zone-inner{display:flex;align-items:center;gap:8px}
+
+/* ── Section card ── */
+.sec-card{background:var(--card);border:1px solid var(--border);border-radius:12px;margin-bottom:0;overflow:hidden;transition:border-color .2s,box-shadow .2s}
+.sec-card:hover{border-color:var(--border2);box-shadow:0 1px 4px rgba(0,0,0,.06)}
+.sec-card.dragging{opacity:.25;border-style:dashed}
+.sec-card.drag-over{border-color:var(--blue);background:var(--blue-bg)}
+
+.sec-header{display:flex;align-items:stretch;gap:10px;padding:12px 12px 12px 10px;cursor:pointer}
+
+.drag-handle{display:flex;flex-direction:column;justify-content:center;gap:3.5px;padding:0 4px;cursor:grab;flex-shrink:0;opacity:.25;transition:opacity .15s;user-select:none}
+.drag-handle:hover{opacity:.6}
+.drag-handle:active{cursor:grabbing}
+.dd-row{display:flex;gap:3px}
+.dd{width:3px;height:3px;border-radius:50%;background:var(--tm)}
+
+.sec-thumb{width:80px;min-height:104px;border-radius:8px;overflow:hidden;background:var(--surface);flex-shrink:0;border:1px solid var(--border);align-self:stretch}
+.sec-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.no-img{display:flex;align-items:center;justify-content:center;width:100%;height:100%;color:var(--td);font-size:22px;min-height:104px}
+
+.sec-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;justify-content:center}
+.sec-name{font-family:var(--mono);font-size:10px;color:var(--td);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sec-meta{font-size:11px;color:var(--tm)}
+
+.date-row{display:flex;align-items:center;gap:6px}
+.date-lbl{font-size:11px;color:var(--td);white-space:nowrap;flex-shrink:0}
+.date-input{font-size:12px;padding:4px 8px;border-radius:6px;flex:1;min-width:0;max-width:130px}
+
+.cmt-row{display:flex;align-items:center;gap:4px}
+.cmt-lbl{font-family:var(--mono);font-size:11px;color:var(--td);flex-shrink:0}
+.cmt-input{flex:1;min-width:0;font-size:12px;padding:4px 8px;border-radius:6px;background:var(--surface);border:1px solid var(--border);color:var(--t);outline:none;transition:border-color .15s}
+.cmt-input:focus{border-color:#555;background:var(--card)}
+.cmt-input::placeholder{color:var(--td)}
+
+.sec-right{display:flex;flex-direction:column;align-items:center;justify-content:space-between;flex-shrink:0;gap:8px;padding:2px 0}
+.expand-arrow{font-size:9px;color:var(--td);transition:transform .2s;user-select:none}
+.expand-arrow.open{transform:rotate(90deg)}
+.sec-del-btn{background:none;border:1px solid var(--red-bd);color:var(--red);font-size:11px;padding:4px 8px;border-radius:6px;cursor:pointer;transition:all .15s;white-space:nowrap}
+.sec-del-btn:hover{background:var(--red-bg)}
+
+/* ── Gallery ── */
+.sec-gallery{display:none;border-top:1px solid var(--border);padding:12px 14px 14px;background:var(--surface)}
+.sec-gallery.open{display:block}
+.gallery-label{font-size:11px;color:var(--tm);margin-bottom:8px;font-weight:500}
+.gallery-grid{display:flex;flex-wrap:wrap;gap:7px}
+.gallery-removed{margin-top:10px;padding:8px 10px;background:var(--amber-bg);border:1px solid var(--amber-bd);border-radius:7px;font-size:11px;color:var(--amber-t);line-height:1.7}
+
+.gal-img{width:78px;height:98px;border-radius:6px;overflow:hidden;background:var(--card);border:1px solid var(--border);flex-shrink:0;position:relative;cursor:grab;transition:all .15s;user-select:none}
+.gal-img:active{cursor:grabbing}
+.gal-img.gal-dragging{opacity:.2;border-style:dashed}
+.gal-img.gal-drag-over{border-color:var(--blue);box-shadow:0 0 0 2px var(--blue-bd)}
+.gal-img img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}
+.gal-num{position:absolute;bottom:3px;left:4px;background:rgba(0,0,0,.55);color:#fff;font-size:9px;font-family:var(--mono);padding:1px 5px;border-radius:3px;pointer-events:none}
+.gal-del{position:absolute;top:3px;right:3px;background:rgba(0,0,0,.6);color:#fff;font-size:10px;width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0;transition:opacity .15s;border:none;padding:0;line-height:1;font-family:var(--sans)}
+.gal-img:hover .gal-del{opacity:1}
+
+/* ── Add zone ── */
+.add-zone{padding:5px 0}
+.add-zone-inner{display:flex;align-items:center;gap:8px}
+.add-line{flex:1;height:1px;background:var(--border)}
+.add-btn-inline{background:none;border:1px dashed var(--border2);color:var(--tm);font-size:11px;font-family:var(--sans);padding:3px 12px;border-radius:4px;cursor:pointer;transition:all .15s;white-space:nowrap;font-weight:500}
+.add-btn-inline:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-bg)}
+.add-panel{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:5px}
+.add-panel .field{margin-bottom:8px}
+.add-panel-row{display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap}
+
+/* ── Progress / Filter ── */
+.progress-wrap{display:none;background:#eee;border-radius:99px;height:6px;overflow:hidden;margin-top:10px}
+.progress-bar{height:100%;background:var(--ink);border-radius:99px;width:0%;transition:width .15s}
+.progress-label{display:none;font-size:11px;color:var(--tm);margin-top:5px;text-align:center}
+.filter-result{display:none;margin-top:8px;padding:10px 12px;border-radius:8px;font-size:12px;line-height:1.8}
+.filter-result.ok{background:var(--green-bg);border:1px solid var(--green-bd);color:var(--green)}
+.filter-result.warn{background:var(--amber-bg);border:1px solid var(--amber-bd);color:var(--amber-t)}
+.filter-result.err{background:var(--red-bg);border:1px solid var(--red-bd);color:var(--red)}
+
+/* ── Output ── */
+textarea{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--t);font-family:var(--mono);font-size:11.5px;padding:11px 13px;resize:vertical;outline:none;transition:border-color .15s;line-height:1.65}
+textarea:focus{border-color:#555;background:var(--card)}
+textarea[readonly]{cursor:default}
+.out-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.out-meta{font-size:12px;color:var(--tm)}
+
+/* ── Toast ── */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(10px);background:var(--ink);color:var(--ink-inv);font-size:13px;font-weight:500;padding:9px 20px;border-radius:8px;opacity:0;transition:all .22s;pointer-events:none;z-index:9999;white-space:nowrap}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ── Sections wrap ── */
+#sections-list{display:flex;flex-direction:column;gap:0}
+.sec-gap{height:0}
+
+/* ── Lightbox ── */
+.lb-overlay{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:10000;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .18s;pointer-events:none}
+.lb-overlay.show{opacity:1;pointer-events:all}
+.lb-img{max-width:92vw;max-height:88vh;border-radius:6px;object-fit:contain;transform:scale(.94);transition:transform .18s;box-shadow:0 8px 40px rgba(0,0,0,.5);user-select:none}
+.lb-overlay.show .lb-img{transform:scale(1)}
+.lb-close{position:fixed;top:18px;right:22px;color:#fff;font-size:26px;cursor:pointer;opacity:.7;transition:opacity .15s;background:none;border:none;line-height:1;padding:4px 8px}
+.lb-close:hover{opacity:1}
+.lb-nav{position:fixed;top:50%;transform:translateY(-50%);color:#fff;font-size:32px;cursor:pointer;opacity:.5;transition:opacity .15s;background:none;border:none;padding:8px 14px;line-height:1;user-select:none}
+.lb-nav:hover{opacity:1}
+.lb-prev{left:12px}
+.lb-next{right:12px}
+.lb-info{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,.6);font-size:12px;font-family:var(--mono);white-space:nowrap}
+
+/* ── Multi-select ── */
+.gal-img.selected{border-color:var(--blue);box-shadow:0 0 0 2px var(--blue-bd)}
+.gal-sel-check{position:absolute;top:3px;left:3px;background:var(--blue);color:#fff;width:16px;height:16px;border-radius:50%;font-size:9px;display:flex;align-items:center;justify-content:center;pointer-events:none;line-height:1}
+.gallery-sel-bar{display:none;align-items:center;gap:8px;padding:6px 10px;background:var(--blue-bg);border:1px solid var(--blue-bd);border-radius:7px;margin-bottom:8px;flex-wrap:wrap}
+.gallery-sel-count{font-size:12px;color:var(--blue);font-weight:600;margin-right:2px}
+.gallery-sel-del{background:none;border:1px solid var(--red-bd);color:var(--red);font-size:11px;padding:3px 10px;border-radius:5px;cursor:pointer;transition:all .15s;font-family:var(--sans)}
+.gallery-sel-del:hover{background:var(--red-bg)}
+.gallery-sel-clear{background:none;border:1px solid var(--border2);color:var(--tm);font-size:11px;padding:3px 10px;border-radius:5px;cursor:pointer;transition:all .15s;font-family:var(--sans)}
+.gallery-sel-clear:hover{background:var(--surface2)}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>상세페이지 HTML 생성기</h1>
+  <span>· 파일명 기반 섹션 감지 · 드래그 순서 변경</span>
+</header>
+
+<div class="app">
+
+  <!-- ── 기본 설정 ── -->
+  <div class="card">
+    <div class="card-title">기본 설정</div>
+    <div class="field-row">
+      <div class="field" style="max-width:150px">
+        <label>서버 날짜</label>
+        <input type="text" id="detail-date" placeholder="2026/02/04" onblur="applyNormDate(this)">
+      </div>
+      <div class="field">
+        <label>디테일 이미지명</label>
+        <input type="text" id="detail-img" placeholder="260204_detail_TOP_0070.jpg">
+      </div>
+    </div>
+    <div class="field" style="max-width:210px">
+      <label>스냅핏 차트 ID <span style="color:var(--td);font-weight:400">(비워두면 미포함)</span></label>
+      <input type="text" id="snapfit-id" placeholder="626946">
+    </div>
+    <div class="switch-row">
+      <div>
+        <div class="switch-label">밝은 컬러 안내 문구 포함</div>
+        <div class="switch-sub">*밝은 컬러의 경우 비칠 우려가 있으니…</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="toggle-warning">
+        <span class="slider"></span>
+      </label>
+    </div>
+  </div>
+
+  <!-- ── 섹션 편집 ── -->
+  <div class="step-lbl">
+    섹션 편집
+    <span class="step-note">왼쪽 점 핸들 드래그 → 섹션 순서 변경 &nbsp;·&nbsp; 카드 클릭 → 이미지 보기 &amp; 삭제</span>
+  </div>
+
+  <div id="sections-list"></div>
+
+  <!-- ── 생성 ── -->
+  <div class="btn-row">
+    <button class="btn btn-primary" id="gen-btn" onclick="generate()">HTML 생성</button>
+  </div>
+  <div class="progress-wrap" id="progress-wrap"><div class="progress-bar" id="progress-bar"></div></div>
+  <div class="progress-label" id="progress-label"></div>
+  <div class="filter-result" id="filter-result"></div>
+
+  <!-- ── 출력 ── -->
+  <div class="card" id="output-wrap" style="display:none;margin-top:16px">
+    <div class="card-title">생성된 HTML</div>
+    <div class="out-bar">
+      <span class="out-meta" id="out-meta"></span>
+      <button class="btn btn-sm" onclick="copyOutput()">📋 복사</button>
+    </div>
+    <textarea id="out-html" rows="12" readonly onclick="this.select()"></textarea>
+  </div>
+
+</div>
+<div id="toast" class="toast"></div>
+
+<!-- 라이트박스 -->
+<div class="lb-overlay" id="lb-overlay" onclick="lbClose()">
+  <button class="lb-close" onclick="lbClose()">✕</button>
+  <button class="lb-nav lb-prev" onclick="lbMove(-1,event)">‹</button>
+  <img class="lb-img" id="lb-img" src="" onclick="event.stopPropagation()">
+  <button class="lb-nav lb-next" onclick="lbMove(1,event)">›</button>
+  <div class="lb-info" id="lb-info"></div>
+</div>
+
+<script>
+// ──────────────────────────────────────────
+//  State
+// ──────────────────────────────────────────
+let sections      = [];
+let introSection  = null;
+let openGalleries = new Set();
+let dragSrcIdx    = null;
+let galDragSec    = null;
+let _toastT;
+
+const galSelected  = new Map(); // secId → Set<filename>
+const galLastClick = new Map(); // secId → filename
+let undoStack = [];
+const MAX_UNDO = 30;
+
+// ──────────────────────────────────────────
+//  Utils
+// ──────────────────────────────────────────
+const uid  = () => Math.random().toString(36).slice(2,8);
+const escQ = s => (s||'').replace(/"/g,'&quot;');
+const escH = s => (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(_toastT);
+  _toastT = setTimeout(() => el.classList.remove('show'), 2300);
+}
+function imgUrl(d, f) { return `http://kclubcokr.cafe24.com/web/poneque/${d}/${f}`; }
+
+// ──────────────────────────────────────────
+//  Undo
+// ──────────────────────────────────────────
+function pushUndo() {
+  undoStack.push(sections.map(s => ({...s, images: s.images.map(img => ({...img}))})));
+  if (undoStack.length > MAX_UNDO) undoStack.shift();
+}
+function doUndo() {
+  if (!undoStack.length) { toast('되돌릴 작업이 없습니다'); return; }
+  sections = undoStack.pop();
+  galSelected.clear();
+  renderAll();
+  toast('↩ 되돌리기');
+}
+
+// ──────────────────────────────────────────
+//  Keyboard shortcuts
+// ──────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  // 라이트박스 열림 상태 → 전용 키만 처리 후 early return
+  const lb = document.getElementById('lb-overlay');
+  if (lb && lb.classList.contains('show')) {
+    if (e.key === 'Escape')      { lbClose(); e.preventDefault(); }
+    else if (e.key === 'ArrowRight') { lbIdx = (lbIdx + 1) % lbUrls.length; lbShow(); e.preventDefault(); }
+    else if (e.key === 'ArrowLeft')  { lbIdx = (lbIdx - 1 + lbUrls.length) % lbUrls.length; lbShow(); e.preventDefault(); }
+    return;
+  }
+
+  const active = document.activeElement;
+  const typing = active?.tagName === 'INPUT' || active?.tagName === 'TEXTAREA' || active?.tagName === 'SELECT';
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+    if (typing) return;
+    e.preventDefault(); doUndo(); return;
+  }
+  if ((e.key === 'Delete' || e.key === 'Backspace') && !typing) {
+    const hasSel = sections.some(s => { const sel = galSelected.get(s.id); return sel && sel.size > 0 && openGalleries.has(s.id); });
+    if (!hasSel) return;
+    e.preventDefault();
+    pushUndo();
+    let tot = 0;
+    sections.forEach((sec, si) => {
+      const sel = galSelected.get(sec.id);
+      if (!sel || sel.size === 0 || !openGalleries.has(sec.id)) return;
+      tot += sel.size;
+      sec.images = sec.images.filter(img => !sel.has(img.filename));
+      galSelected.set(sec.id, new Set());
+      const card = document.querySelector(`.sec-card[data-secid="${sec.id}"]`);
+      if (card) { refreshGallery(card, si); updateSelUI(card, si); }
+    });
+    if (tot) toast(`${tot}개 삭제됨`);
+    return;
+  }
+  if (e.key === 'Escape') {
+    galSelected.clear();
+    document.querySelectorAll('.gal-img.selected').forEach(el => el.classList.remove('selected'));
+    document.querySelectorAll('.gal-sel-check').forEach(el => el.remove());
+    document.querySelectorAll('.gallery-sel-bar').forEach(el => { el.style.display = 'none'; el.innerHTML = ''; });
+  }
+});
+
+// ──────────────────────────────────────────
+//  Filename resolution
+// ──────────────────────────────────────────
+function resolveFilenames(raw) {
+  const parts = raw.split(',').map(s => s.trim()).filter(Boolean);
+  if (parts.length === 1) {
+    const m = parts[0].match(/^(.+)_(\d+)(\.\w+)?$/i);
+    if (m) {
+      const stem = m[1], max = parseInt(m[2], 10), ext = m[3] || '.jpg';
+      if (max >= 1 && max <= 300) return Array.from({length: max}, (_, i) => `${stem}_${i+1}${ext}`);
+    }
+  }
+  let base = '';
+  const out = [];
+  for (const p of parts) {
+    if (p.startsWith('_')) { if (base) out.push(base.replace(/_(\d+)(\.\w+)?$/, '') + p); }
+    else { base = p; out.push(p); }
+  }
+  return out.map(f => /\.\w+$/.test(f) ? f : f + '.jpg');
+}
+function extractBase(filename) {
+  // greedy: 마지막 _숫자(.확장자)? 패턴에서 끊기
+  const m = filename.match(/^(.+)_\d+(\.\w+)?$/i);
+  return m ? m[1] : filename.replace(/\.\w+$/, '');
+}
+
+// ──────────────────────────────────────────
+//  Date normalization
+// ──────────────────────────────────────────
+function normalizeDate(val) {
+  const d = val.replace(/\D/g, '');
+  if (d.length === 6) return `20${d.slice(0,2)}/${d.slice(2,4)}/${d.slice(4,6)}`;
+  if (d.length === 8) return `${d.slice(0,4)}/${d.slice(4,6)}/${d.slice(6,8)}`;
+  return val;
+}
+function applyNormDate(input, updateSec, si) {
+  const norm = normalizeDate(input.value);
+  if (norm !== input.value) {
+    input.value = norm;
+    if (updateSec && si !== undefined) {
+      sections[si].serverDate = norm;
+      const card = document.querySelector(`.sec-card[data-secid="${sections[si].id}"]`);
+      if (card) refreshGallery(card, si);
+    }
+  }
+}
+
+// ──────────────────────────────────────────
+//  Render
+// ──────────────────────────────────────────
+function renderAll() {
+  const list = document.getElementById('sections-list');
+  list.innerHTML = '';
+  if (introSection) list.appendChild(makeIntroCard());
+  else list.appendChild(makeIntroAddZone());
+  list.appendChild(makeAddZone(0));
+  sections.forEach((sec, i) => {
+    const card = makeSectionCard(sec, i);
+    if (openGalleries.has(sec.id)) {
+      card.querySelector('.sec-gallery').classList.add('open');
+      card.querySelector('[data-arrow]').classList.add('open');
+    }
+    list.appendChild(card);
+    list.appendChild(makeAddZone(i + 1));
+  });
+}
+
+// ──────────────────────────────────────────
+//  인트로 카드
+// ──────────────────────────────────────────
+function makeIntroCard() {
+  const wrap = document.createElement('div');
+  wrap.className = 'intro-card'; wrap.style.marginBottom = '16px';
+  wrap.innerHTML = `
+    <div class="intro-card-header">
+      <span class="intro-card-title">인트로 이미지</span>
+      <button class="intro-del-btn" id="intro-del-btn">삭제</button>
+    </div>
+    <div class="field-row">
+      <div class="field" style="max-width:150px">
+        <label>서버 날짜</label>
+        <input type="text" id="intro-date" value="${escH(introSection.serverDate)}" placeholder="2026/02/04">
+      </div>
+      <div class="field">
+        <label>파일명 (확장자 제외)</label>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input type="text" id="intro-filename" value="${escH(introSection.filename)}" placeholder="TOP0070_intro" style="flex:1">
+          <select id="intro-ext" class="ext-select">
+            <option value="jpg" ${introSection.ext==='jpg'?'selected':''}>jpg</option>
+            <option value="jpeg" ${introSection.ext==='jpeg'?'selected':''}>jpeg</option>
+            <option value="png" ${introSection.ext==='png'?'selected':''}>png</option>
+            <option value="gif" ${introSection.ext==='gif'?'selected':''}>gif</option>
+            <option value="webp" ${introSection.ext==='webp'?'selected':''}>webp</option>
+          </select>
+        </div>
+        <div class="hint" id="intro-preview-hint"></div>
+      </div>
+    </div>`;
+  wrap.querySelector('#intro-del-btn').addEventListener('click', () => {
+    if (!confirm('인트로 이미지를 삭제할까요?')) return;
+    introSection = null; renderAll(); toast('인트로 이미지 삭제됨');
+  });
+  const upd = () => {
+    const fn = wrap.querySelector('#intro-filename').value.trim();
+    const ext = wrap.querySelector('#intro-ext').value;
+    const dt = wrap.querySelector('#intro-date').value.trim();
+    wrap.querySelector('#intro-preview-hint').textContent = (fn && dt) ? `→ ${dt}/${fn}.${ext}` : '';
+    introSection.filename = fn; introSection.ext = ext; introSection.serverDate = dt;
+  };
+  wrap.querySelector('#intro-filename').addEventListener('input', upd);
+  wrap.querySelector('#intro-ext').addEventListener('change', upd);
+  wrap.querySelector('#intro-date').addEventListener('input', upd);
+  wrap.querySelector('#intro-date').addEventListener('blur', e => { applyNormDate(e.target); upd(); });
+  upd();
+  return wrap;
+}
+function makeIntroAddZone() {
+  const div = document.createElement('div'); div.style.marginBottom = '16px';
+  div.innerHTML = `<div class="intro-add-zone"><div class="intro-add-zone-inner add-zone-inner"><div class="add-line"></div><button class="add-btn-inline" id="intro-add-btn">＋ 인트로 이미지 추가</button><div class="add-line"></div></div></div>`;
+  div.querySelector('#intro-add-btn').addEventListener('click', () => { introSection = {serverDate:'',filename:'',ext:'jpg'}; renderAll(); });
+  return div;
+}
+
+// ──────────────────────────────────────────
+//  Section Card
+// ──────────────────────────────────────────
+function makeSectionCard(sec, i) {
+  const wrap = document.createElement('div');
+  wrap.className = 'sec-card'; wrap.dataset.secid = sec.id;
+  const thumb = sec.images[0] ? imgUrl(sec.serverDate, sec.images[0].filename) : null;
+  wrap.innerHTML = `
+    <div class="sec-header">
+      <div class="drag-handle" title="드래그로 순서 변경">
+        <div class="dd-row"><div class="dd"></div><div class="dd"></div></div>
+        <div class="dd-row"><div class="dd"></div><div class="dd"></div></div>
+        <div class="dd-row"><div class="dd"></div><div class="dd"></div></div>
+      </div>
+      <div class="sec-thumb">
+        ${thumb ? `<img src="${escQ(thumb)}" onerror="this.parentElement.innerHTML='<div class=\\'no-img\\'>📷</div>'">` : '<div class="no-img">📷</div>'}
+      </div>
+      <div class="sec-info">
+        <div class="date-row">
+          <span class="date-lbl">서버 날짜</span>
+          <input class="date-input" type="text" value="${escH(sec.serverDate)}" placeholder="2026/02/02" data-didx="${i}">
+        </div>
+        <div class="cmt-row">
+          <span class="cmt-lbl">섹션명</span>
+          <input class="cmt-input" type="text" value="${escH(sec.comment||sec.name)}" placeholder="섹션 이름" data-cidx="${i}">
+        </div>
+        <div class="sec-name" title="${escH(sec.name)}">${escH(sec.name)}</div>
+        <div class="sec-meta">${sec.images.length}장</div>
+      </div>
+      <div class="sec-right">
+        <button class="sec-del-btn" data-del="${i}">삭제</button>
+        <div class="expand-arrow" data-arrow>▶</div>
+      </div>
+    </div>
+    <div class="sec-gallery">
+      <div class="gallery-label">클릭 선택 · Shift/Ctrl 다중선택 · 드래그 순서변경 · Del 삭제 · Ctrl+Z 되돌리기</div>
+      <div class="gallery-sel-bar"></div>
+      <div class="gallery-grid">${renderGalleryItems(sec, i)}</div>
+      <div class="gallery-removed" style="display:none"></div>
+    </div>`;
+
+  const header = wrap.querySelector('.sec-header');
+  const gallery = wrap.querySelector('.sec-gallery');
+  const arrow = wrap.querySelector('[data-arrow]');
+  const dragH = wrap.querySelector('.drag-handle');
+  const dateInp = wrap.querySelector('.date-input');
+  const cmtInp = wrap.querySelector('.cmt-input');
+  const delB = wrap.querySelector('[data-del]');
+
+  header.addEventListener('click', e => {
+    if ([dragH,dateInp,cmtInp,delB].some(el => el&&el.contains(e.target))) return;
+    const open = gallery.classList.toggle('open');
+    arrow.classList.toggle('open', open);
+    if (open) openGalleries.add(sec.id);
+    else { openGalleries.delete(sec.id); }
+  });
+  let _dateT;
+  dateInp.addEventListener('input', e => {
+    const idx = +e.target.dataset.didx;
+    const val = e.target.value.trim();
+    sections[idx].serverDate = val;
+    clearTimeout(_dateT);
+    _dateT = setTimeout(() => refreshGallery(wrap, idx), 500);
+  });
+  dateInp.addEventListener('blur', () => { clearTimeout(_dateT); applyNormDate(dateInp, true, +dateInp.dataset.didx); });
+  cmtInp.addEventListener('input', e => { sections[+e.target.dataset.cidx].comment = e.target.value; });
+  delB.addEventListener('click', () => {
+    if (!confirm(`"${sections[i].name}" 섹션을 삭제할까요?`)) return;
+    openGalleries.delete(sec.id); galSelected.delete(sec.id);
+    sections.splice(i, 1); renderAll(); toast('섹션 삭제됨');
+  });
+  bindGalleryDrag(wrap, i);
+  wrap.draggable = true;
+  wrap.addEventListener('dragstart', e => {
+    if (!dragH.contains(e.target) && wrap !== e.target) { e.preventDefault(); return; }
+    dragSrcIdx = i; e.dataTransfer.effectAllowed = 'move';
+    setTimeout(() => wrap.classList.add('dragging'), 0);
+  });
+  wrap.addEventListener('dragend', () => wrap.classList.remove('dragging'));
+  wrap.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); wrap.classList.add('drag-over'); });
+  wrap.addEventListener('dragleave', () => wrap.classList.remove('drag-over'));
+  wrap.addEventListener('drop', e => {
+    e.preventDefault(); e.stopPropagation(); wrap.classList.remove('drag-over');
+    if (dragSrcIdx !== null && dragSrcIdx !== i && galDragSec === null) {
+      const [moved] = sections.splice(dragSrcIdx, 1);
+      sections.splice(i, 0, moved);
+      dragSrcIdx = null; renderAll(); toast('섹션 순서 변경됨');
+    }
+    dragSrcIdx = null;
+  });
+  return wrap;
+}
+
+// ──────────────────────────────────────────
+//  Gallery rendering
+// ──────────────────────────────────────────
+function renderGalleryItems(sec, secIdx) {
+  const sel = galSelected.get(sec.id) || new Set();
+  return sec.images.map((img, n) => {
+    const url = imgUrl(sec.serverDate, img.filename);
+    const isSel = sel.has(img.filename);
+    return `<div class="gal-img${isSel?' selected':''}" data-sec="${secIdx}" data-img="${n}" data-filename="${escQ(img.filename)}" draggable="true">
+      <img src="${escQ(url)}" loading="lazy" onerror="this.style.display='none'">
+      <div class="gal-num">${n+1}</div>
+      ${isSel?'<div class="gal-sel-check">✓</div>':''}<button class="gal-del" onclick="deleteImage(${secIdx},${n},event)">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function refreshGallery(wrap, si) {
+  const sec = sections[si];
+  wrap.querySelector('.gallery-grid').innerHTML = renderGalleryItems(sec, si);
+  bindGalleryDrag(wrap, si);
+  wrap.querySelector('.sec-meta').textContent = sec.images.length + '장';
+  const first = sec.images[0];
+  const th = wrap.querySelector('.sec-thumb');
+  if (first) {
+    th.innerHTML = `<img src="${escQ(imgUrl(sec.serverDate, first.filename))}" onerror="this.parentElement.innerHTML='<div class=\\'no-img\\'>📷</div>'">`;
+  } else th.innerHTML = '<div class="no-img">📷</div>';
+  updateSelUI(wrap, si);
+}
+
+function deleteImage(si, ni, e) {
+  e.stopPropagation();
+  pushUndo();
+  const filename = sections[si].images[ni]?.filename;
+  sections[si].images.splice(ni, 1);
+  if (filename) { const s = galSelected.get(sections[si].id); if (s) s.delete(filename); }
+  const cards = document.querySelectorAll('.sec-card');
+  if (cards[si]) { refreshGallery(cards[si], si); updateSelUI(cards[si], si); }
+  toast('이미지 삭제됨');
+}
+
+// ── Selection UI ──
+function updateSelUI(wrap, si) {
+  const sec = sections[si];
+  const sel = galSelected.get(sec.id) || new Set();
+  const bar = wrap.querySelector('.gallery-sel-bar');
+  if (!bar) return;
+  if (sel.size === 0) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+  bar.style.display = 'flex';
+  bar.innerHTML = `<span class="gallery-sel-count">${sel.size}개 선택됨</span><button class="gallery-sel-del">삭제</button><button class="gallery-sel-clear">선택 해제</button>`;
+  bar.querySelector('.gallery-sel-del').onclick = () => {
+    pushUndo();
+    const cnt = sel.size;
+    sec.images = sec.images.filter(img => !sel.has(img.filename));
+    galSelected.set(sec.id, new Set());
+    refreshGallery(wrap, si); toast(`${cnt}개 삭제됨`);
+  };
+  bar.querySelector('.gallery-sel-clear').onclick = () => {
+    galSelected.set(sec.id, new Set());
+    wrap.querySelectorAll('.gal-img.selected').forEach(el => el.classList.remove('selected'));
+    wrap.querySelectorAll('.gal-sel-check').forEach(el => el.remove());
+    bar.style.display = 'none'; bar.innerHTML = '';
+  };
+}
+
+// ── Drag & click ──
+function bindGalleryDrag(wrap, si) {
+  wrap.querySelectorAll('.gal-img').forEach(el => {
+    el.addEventListener('dblclick', e => {
+      e.stopPropagation();
+      const sec = sections[si];
+      const urls = sec.images.map(img => imgUrl(sec.serverDate, img.filename));
+      const idx  = +el.dataset.img;
+      lbOpen(urls, idx);
+    });
+    el.addEventListener('click', e => {      if (e.target.classList.contains('gal-del')) return;
+      e.stopPropagation();
+      const sec = sections[si];
+      const fn = el.dataset.filename; if (!fn) return;
+      if (!galSelected.has(sec.id)) galSelected.set(sec.id, new Set());
+      const sel = galSelected.get(sec.id);
+      if (e.shiftKey && galLastClick.has(sec.id)) {
+        const last = galLastClick.get(sec.id);
+        const imgs = sec.images;
+        const li = imgs.findIndex(img => img.filename === last);
+        const ci = +el.dataset.img;
+        const [fr, to] = [Math.min(li,ci), Math.max(li,ci)];
+        for (let k = fr; k <= to; k++) sel.add(imgs[k].filename);
+      } else if (e.ctrlKey || e.metaKey || e.altKey) {
+        if (sel.has(fn)) sel.delete(fn); else sel.add(fn);
+        galLastClick.set(sec.id, fn);
+      } else {
+        sel.clear(); sel.add(fn);
+        galLastClick.set(sec.id, fn);
+      }
+      updateSelUI(wrap, si);
+      wrap.querySelectorAll('.gal-img').forEach(item => {
+        const f = item.dataset.filename;
+        const isSel = sel.has(f);
+        item.classList.toggle('selected', isSel);
+        const chk = item.querySelector('.gal-sel-check');
+        if (isSel && !chk) { const d = document.createElement('div'); d.className='gal-sel-check'; d.textContent='✓'; item.appendChild(d); }
+        else if (!isSel && chk) chk.remove();
+      });
+    });
+    el.addEventListener('dragstart', e => {
+      const sec = sections[si];
+      const sel = galSelected.get(sec.id);
+      const fn = el.dataset.filename;
+      const isMulti = sel && sel.size > 1 && sel.has(fn);
+      galDragSec = {si, imgIdx: +el.dataset.img, isMulti};
+      e.dataTransfer.effectAllowed = 'move'; e.stopPropagation();
+      setTimeout(() => {
+        if (isMulti) wrap.querySelectorAll('.gal-img.selected').forEach(item => item.classList.add('gal-dragging'));
+        else el.classList.add('gal-dragging');
+      }, 0);
+    });
+    el.addEventListener('dragend', () => { wrap.querySelectorAll('.gal-img').forEach(item => item.classList.remove('gal-dragging')); galDragSec = null; });
+    el.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); el.classList.add('gal-drag-over'); });
+    el.addEventListener('dragleave', () => el.classList.remove('gal-drag-over'));
+    el.addEventListener('drop', e => {
+      e.preventDefault(); e.stopPropagation(); el.classList.remove('gal-drag-over');
+      if (!galDragSec || galDragSec.si !== si) { galDragSec = null; return; }
+      const {imgIdx: fromImg, isMulti} = galDragSec;
+      const toImg = +el.dataset.img;
+      pushUndo();
+      const sec = sections[si];
+      const imgs = sec.images;
+      if (isMulti) {
+        const sel = galSelected.get(sec.id) || new Set();
+        const targetFile = imgs[toImg]?.filename;
+        const selItems = imgs.filter(img => sel.has(img.filename));
+        const rest = imgs.filter(img => !sel.has(img.filename));
+        let at = rest.length;
+        if (targetFile && !sel.has(targetFile)) { at = rest.findIndex(img => img.filename === targetFile); if (at < 0) at = rest.length; }
+        rest.splice(at, 0, ...selItems);
+        sec.images = rest;
+        toast(`${selItems.length}개 이동됨`);
+      } else {
+        if (fromImg === toImg) { galDragSec = null; return; }
+        const [mv] = imgs.splice(fromImg, 1); imgs.splice(toImg, 0, mv);
+        toast('이미지 순서 변경됨');
+      }
+      galDragSec = null; refreshGallery(wrap, si); updateSelUI(wrap, si);
+    });
+  });
+}
+
+// ──────────────────────────────────────────
+//  Add Zone
+// ──────────────────────────────────────────
+function makeAddZone(insertIdx) {
+  const div = document.createElement('div'); div.className = 'add-zone';
+  div.innerHTML = `
+    <div class="add-zone-inner">
+      <div class="add-line"></div>
+      <button class="add-btn-inline">＋ 섹션 추가</button>
+      <div class="add-line"></div>
+    </div>
+    <div class="add-panel" style="display:none">
+      <div class="field-row" style="margin-bottom:8px">
+        <div class="field" style="max-width:150px">
+          <label style="font-size:11px;color:var(--tm)">서버 날짜</label>
+          <input type="text" class="ap-date" placeholder="2026/02/02">
+        </div>
+        <div class="field">
+          <label style="font-size:11px;color:var(--tm)">코드명</label>
+          <input type="text" class="ap-imgs" placeholder="코드명을 적어주세요">
+        </div>
+      </div>
+      <div class="add-panel-row">
+        <button class="btn btn-primary btn-sm ap-add">추가</button>
+        <button class="btn btn-sm ap-cancel">취소</button>
+      </div>
+    </div>`;
+  const btn = div.querySelector('.add-btn-inline');
+  const panel = div.querySelector('.add-panel');
+  btn.addEventListener('click', () => { panel.style.display=''; btn.style.display='none'; div.querySelector('.ap-date').focus(); });
+  div.querySelector('.ap-date').addEventListener('blur', e => applyNormDate(e.target));
+  div.querySelector('.ap-cancel').addEventListener('click', () => { panel.style.display='none'; btn.style.display=''; div.querySelector('.ap-imgs').value=''; });
+  div.querySelector('.ap-add').addEventListener('click', () => {
+    const sd = div.querySelector('.ap-date').value.trim();
+    const raw = div.querySelector('.ap-imgs').value.trim();
+    if (!sd) { toast('서버 날짜를 입력해 주세요'); return; }
+    if (!raw) { toast('이미지를 입력해 주세요'); return; }
+    const fns = resolveFilenames(raw);
+    if (!fns.length) { toast('이미지를 찾을 수 없어요'); return; }
+    const name = extractBase(fns[0]);
+    sections.splice(insertIdx, 0, {id:uid(), name, comment:name, serverDate:sd, images:fns.map(f=>({filename:f}))});
+    renderAll(); toast(`섹션 추가됨 (${fns.length}장)`);
+  });
+  return div;
+}
+
+// ──────────────────────────────────────────
+//  Lightbox
+// ──────────────────────────────────────────
+let lbUrls = [];
+let lbIdx  = 0;
+
+function lbOpen(urls, idx) {
+  lbUrls = urls; lbIdx = idx;
+  lbShow();
+  document.getElementById('lb-overlay').classList.add('show');
+}
+function lbShow() {
+  const url = lbUrls[lbIdx];
+  document.getElementById('lb-img').src = url;
+  document.getElementById('lb-info').textContent =
+    `${lbIdx + 1} / ${lbUrls.length}  ·  ${url.split('/').pop()}`;
+}
+function lbClose() {
+  document.getElementById('lb-overlay').classList.remove('show');
+  setTimeout(() => { document.getElementById('lb-img').src = ''; }, 200);
+}
+function lbMove(dir, e) {
+  e.stopPropagation();
+  lbIdx = (lbIdx + dir + lbUrls.length) % lbUrls.length;
+  lbShow();
+}
+
+// ──────────────────────────────────────────
+//  Image checker
+// ──────────────────────────────────────────
+function checkImg(url) {
+  return new Promise(resolve => {
+    const img = new Image();
+    const t = setTimeout(() => resolve(false), 8000);
+    img.onload  = () => { clearTimeout(t); resolve(true); };
+    img.onerror = () => { clearTimeout(t); resolve(false); };
+    img.src = url + '?_=' + Date.now();
+  });
+}
+
+// ──────────────────────────────────────────
+//  Generate
+// ──────────────────────────────────────────
+async function generate() {
+  const detailImg  = document.getElementById('detail-img').value.trim();
+  const detailDate = document.getElementById('detail-date').value.trim();
+  const snapfitId  = document.getElementById('snapfit-id').value.trim();
+  const showWarn   = document.getElementById('toggle-warning').checked;
+
+  let introUrl = null;
+  if (introSection) {
+    const fn = introSection.filename.trim(), dt = introSection.serverDate.trim();
+    if (fn && dt) introUrl = imgUrl(dt, `${fn}.${introSection.ext}`);
+    else { toast('인트로: 파일명과 서버 날짜를 입력해 주세요'); return; }
+  }
+
+  const allUrls = [];
+  if (introUrl) allUrls.push(introUrl);
+  sections.forEach(s => s.images.forEach(img => allUrls.push(imgUrl(s.serverDate, img.filename))));
+  if (detailImg && detailDate) allUrls.push(imgUrl(detailDate, detailImg));
+  if (!allUrls.length) { toast('이미지를 추가해 주세요'); return; }
+
+  const genBtn = document.getElementById('gen-btn');
+  const progressWrap = document.getElementById('progress-wrap');
+  const progressBar = document.getElementById('progress-bar');
+  const progressLbl = document.getElementById('progress-label');
+  const filterRes = document.getElementById('filter-result');
+
+  genBtn.disabled = true; genBtn.textContent = '이미지 확인 중...';
+  progressWrap.style.display = 'block'; progressLbl.style.display = 'block';
+  filterRes.style.display = 'none'; progressBar.style.width = '0%';
+
+  const validSet = new Set(); const removed = []; let done = 0;
+  await Promise.all(allUrls.map(async url => {
+    const ok = await checkImg(url); done++;
+    progressBar.style.width = Math.round(done/allUrls.length*100) + '%';
+    progressLbl.textContent = `확인 중 ${done} / ${allUrls.length}`;
+    if (ok) validSet.add(url); else removed.push(url.split('/').pop().split('?')[0]);
+  }));
+
+  sections.forEach((sec) => {
+    const card = document.querySelector(`.sec-card[data-secid="${sec.id}"]`);
+    const removedInSec = sec.images.filter(img => !validSet.has(imgUrl(sec.serverDate, img.filename)));
+    if (removedInSec.length === 0) { if (card) card.querySelector('.gallery-removed').style.display = 'none'; return; }
+    sec.images = sec.images.filter(img => validSet.has(imgUrl(sec.serverDate, img.filename)));
+    const s = galSelected.get(sec.id); if (s) removedInSec.forEach(img => s.delete(img.filename));
+    openGalleries.add(sec.id);
+    if (card) {
+      const si = sections.indexOf(sec);
+      refreshGallery(card, si);
+      card.querySelector('.sec-gallery').classList.add('open');
+      card.querySelector('[data-arrow]').classList.add('open');
+      const notice = card.querySelector('.gallery-removed');
+      notice.style.display = 'block';
+      notice.innerHTML = `<strong>⚠ ${removedInSec.length}개 이미지가 서버에 없어 삭제되었습니다</strong><br>` + removedInSec.map(img => `· ${img.filename}`).join('<br>');
+    }
+  });
+
+  if (validSet.size === 0 && allUrls.length > 0) {
+    filterRes.className = 'filter-result err';
+    filterRes.innerHTML = '<strong>⛔ 서버에 연결할 수 없습니다</strong><br>서버 날짜와 파일명을 다시 확인해 주세요.';
+    filterRes.style.display = 'block';
+    genBtn.disabled = false; genBtn.textContent = 'HTML 생성';
+    progressWrap.style.display = 'none'; progressLbl.style.display = 'none'; return;
+  }
+
+  filterRes.className = removed.length ? 'filter-result warn' : 'filter-result ok';
+  filterRes.innerHTML = removed.length
+    ? `<strong>⚠ ${removed.length}개 이미지 제외됨</strong><br>` + removed.map(f=>`· ${f}`).join('<br>')
+    : `<strong>✓ 전체 ${allUrls.length}개 이미지 확인 완료</strong>`;
+  filterRes.style.display = 'block';
+
+  const BR5 = '\t<br>\n\t<br>\n\t<br>\n\t<br>\n\t<br>\n';
+  let html = `<div style="text-align: center;">\n\t<!--상세-->\n\n\t<br>\n\t<br>\n\t<br>\n\t<br>\n\t<br>\n\n`;
+  if (introUrl && validSet.has(introUrl)) {
+    html += `\t<p style="text-align: center;"><img src="${introUrl}"></p>\n${BR5}\n`;
+    if (showWarn) html += `\t<br>\n\t *밝은 컬러의 경우 비칠 우려가 있으니\n\t<br> 스킨 컬러의 이너를 착용하시는걸 권장합니다\n\t<br>\n\t<br>\n\t<br>\n\t<br>\n\t<br>\n\t<br>\n`;
+  }
+  for (const sec of sections) {
+    if (!sec.images.length) continue;
+    const label = (sec.comment||sec.name).trim();
+    html += `\n\t<!--${label}-->\n\n`;
+    for (const img of sec.images) html += `\t<p style="text-align: center;"><img src="${imgUrl(sec.serverDate, img.filename)}"></p>\n${BR5}\n\n`;
+  }
+  if (detailImg && detailDate) {
+    const du = imgUrl(detailDate, detailImg);
+    if (validSet.has(du)) { html += `\n\t<!--디테일-->\n\n\t<p style="text-align: center;"><img src="${du}"></p>\n${BR5}\n`; }
+  }
+  if (snapfitId) {
+    html += `\n\t<!--스냅핏-->\n\t<!---스냅핏 차트 시작 --->\n`;
+    [['768','415','1175'],['414','376','1182'],['375','361','1182'],['360','321','1182']].forEach(([mx,mn,h]) => {
+      html += `\t<style>\n\t\t@media (max-width: ${mx}px) and (min-width: ${mn}px) {\n\t\t\t.sf_chart_iframe_id_${snapfitId} {\n\t\t\t\theight: ${h}px !important; width: 100% !important; max-width: ${mx}px !important; min-width: ${mn}px !important;\n\t\t\t}\n\t\t}\n\t</style>\n`;
+    });
+    html += `\t<style>\n\t\t@media (max-width: 320px) {\n\t\t\t.sf_chart_iframe_id_${snapfitId} {\n\t\t\t\theight: 1206px !important; width: 100% !important; max-width: 320px !important;\n\t\t\t}\n\t\t}\n\t</style>\n`;
+    html += `\t<iframe id="sf_chart_iframe_id" class="sf_chart_iframe_id_${snapfitId}" border="0" src="//cdn.snapfit.co.kr/stores/poneque/chart/${snapfitId}.html" frameborder="0" height="1165" width="100%" scrolling="no"> </iframe>\n`;
+    html += `\t<input id="sf_store_id" type="hidden" value="1984">\n\t<input id="sf_chart_id" type="hidden" value="${snapfitId}">\n\t<!---- 스냅핏 차트 종료 --->\n`;
+  }
+  html += `\n</div>`;
+
+  document.getElementById('out-html').value = html;
+  const tot = sections.reduce((s,sec)=>s+sec.images.length,0);
+  document.getElementById('out-meta').textContent = `섹션 ${sections.length}개 · 이미지 ${tot}장`+(introSection?' · 인트로 포함':'');
+  document.getElementById('output-wrap').style.display = '';
+  genBtn.disabled = false; genBtn.textContent = 'HTML 생성';
+  progressWrap.style.display = 'none'; progressLbl.style.display = 'none';
+}
+
+// ──────────────────────────────────────────
+//  Copy
+// ──────────────────────────────────────────
+function copyOutput() {
+  const text = document.getElementById('out-html').value;
+  if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(()=>toast('복사됐어요!')).catch(fallbackCopy);
+  else fallbackCopy();
+}
+function fallbackCopy() {
+  const ta = document.getElementById('out-html');
+  ta.select(); ta.setSelectionRange(0,99999);
+  try { document.execCommand('copy'); toast('복사됐어요!'); } catch { toast('복사 실패 — 직접 선택해 주세요'); }
+}
+
+renderAll();
+</script>
+</body>
+</html>
