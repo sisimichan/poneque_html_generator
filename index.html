@@ -72,6 +72,15 @@ select{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%
 .intro-del-btn:hover{background:var(--red-bg)}
 .ext-select{width:90px;flex-shrink:0}
 
+.intro-imgs-list{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+.intro-img-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.intro-img-row .intro-date{width:130px;flex-shrink:0;font-size:12px;padding:6px 9px}
+.intro-img-row .intro-fname{flex:1;min-width:150px;font-size:13px}
+.intro-row-del{background:none;border:1px solid var(--red-bd);color:var(--red);font-size:12px;width:30px;height:32px;border-radius:6px;cursor:pointer;flex-shrink:0;padding:0;line-height:1;font-family:var(--sans);transition:all .15s}
+.intro-row-del:hover{background:var(--red-bg)}
+.intro-add-row{background:none;border:1px dashed var(--border2);color:var(--tm);font-size:12px;padding:5px 14px;border-radius:6px;cursor:pointer;font-family:var(--sans);transition:all .15s}
+.intro-add-row:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-bg)}
+
 /* ── 인트로 없을 때 추가 버튼 ── */
 .intro-add-zone{padding:5px 0;margin-bottom:0}
 .intro-add-zone-inner{display:flex;align-items:center;gap:8px}
@@ -80,7 +89,8 @@ select{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%
 .sec-card{background:var(--card);border:1px solid var(--border);border-radius:12px;margin-bottom:0;overflow:hidden;transition:border-color .2s,box-shadow .2s}
 .sec-card:hover{border-color:var(--border2);box-shadow:0 1px 4px rgba(0,0,0,.06)}
 .sec-card.dragging{opacity:.25;border-style:dashed}
-.sec-card.drag-over{border-color:var(--blue);background:var(--blue-bg)}
+.sec-card.drop-before{box-shadow:0 -3px 0 var(--blue);position:relative;z-index:2}
+.sec-card.drop-after{box-shadow:0 3px 0 var(--blue);position:relative;z-index:2}
 
 .sec-header{display:flex;align-items:stretch;gap:10px;padding:12px 12px 12px 10px;cursor:pointer}
 
@@ -124,7 +134,8 @@ select{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%
 .gal-img{width:78px;height:98px;border-radius:6px;overflow:hidden;background:var(--card);border:1px solid var(--border);flex-shrink:0;position:relative;cursor:grab;transition:all .15s;user-select:none}
 .gal-img:active{cursor:grabbing}
 .gal-img.gal-dragging{opacity:.2;border-style:dashed}
-.gal-img.gal-drag-over{border-color:var(--blue);box-shadow:0 0 0 2px var(--blue-bd)}
+.gal-img.gal-drop-before{box-shadow:-3px 0 0 var(--blue);z-index:2}
+.gal-img.gal-drop-after{box-shadow:3px 0 0 var(--blue);z-index:2}
 .gal-img img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}
 .gal-num{position:absolute;bottom:3px;left:4px;background:rgba(0,0,0,.55);color:#fff;font-size:9px;font-family:var(--mono);padding:1px 5px;border-radius:3px;pointer-events:none}
 .gal-del{position:absolute;top:3px;right:3px;background:rgba(0,0,0,.6);color:#fff;font-size:10px;width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0;transition:opacity .15s;border:none;padding:0;line-height:1;font-family:var(--sans)}
@@ -433,58 +444,82 @@ function renderAll() {
 }
 
 // ──────────────────────────────────────────
-//  인트로 카드
+//  인트로 카드 (이미지마다 서버 날짜 개별)
 // ──────────────────────────────────────────
 function makeIntroCard() {
   const wrap = document.createElement('div');
-  wrap.className = 'intro-card'; wrap.style.marginBottom = '16px';
+  wrap.className = 'intro-card';
+  wrap.style.marginBottom = '16px';
+
+  const imgRowsHTML = introSection.images.map((img, idx) => `
+    <div class="intro-img-row" data-iidx="${idx}">
+      <input type="text" class="intro-date" value="${escH(img.serverDate)}" placeholder="서버 날짜">
+      <input type="text" class="intro-fname" value="${escH(img.filename)}" placeholder="파일명 (확장자 제외)">
+      <select class="intro-ext ext-select">
+        <option value="jpg"  ${img.ext==='jpg'  ? 'selected' : ''}>jpg</option>
+        <option value="jpeg" ${img.ext==='jpeg' ? 'selected' : ''}>jpeg</option>
+        <option value="png"  ${img.ext==='png'  ? 'selected' : ''}>png</option>
+        <option value="gif"  ${img.ext==='gif'  ? 'selected' : ''}>gif</option>
+        <option value="webp" ${img.ext==='webp' ? 'selected' : ''}>webp</option>
+      </select>
+      <button class="intro-row-del" title="이미지 제거">✕</button>
+    </div>`).join('');
+
   wrap.innerHTML = `
     <div class="intro-card-header">
       <span class="intro-card-title">인트로 이미지</span>
-      <button class="intro-del-btn" id="intro-del-btn">삭제</button>
+      <button class="intro-del-btn" id="intro-del-btn">전체 삭제</button>
     </div>
-    <div class="field-row">
-      <div class="field" style="max-width:150px">
-        <label>서버 날짜</label>
-        <input type="text" id="intro-date" value="${escH(introSection.serverDate)}" placeholder="2026/02/04">
-      </div>
-      <div class="field">
-        <label>파일명 (확장자 제외)</label>
-        <div style="display:flex;gap:6px;align-items:center">
-          <input type="text" id="intro-filename" value="${escH(introSection.filename)}" placeholder="TOP0070_intro" style="flex:1">
-          <select id="intro-ext" class="ext-select">
-            <option value="jpg" ${introSection.ext==='jpg'?'selected':''}>jpg</option>
-            <option value="jpeg" ${introSection.ext==='jpeg'?'selected':''}>jpeg</option>
-            <option value="png" ${introSection.ext==='png'?'selected':''}>png</option>
-            <option value="gif" ${introSection.ext==='gif'?'selected':''}>gif</option>
-            <option value="webp" ${introSection.ext==='webp'?'selected':''}>webp</option>
-          </select>
-        </div>
-        <div class="hint" id="intro-preview-hint"></div>
-      </div>
+    <div class="field" style="margin-bottom:0">
+      <label>이미지 목록 (서버 날짜 · 파일명 · 확장자, 순서대로 출력됨)</label>
+      <div class="intro-imgs-list">${imgRowsHTML}</div>
+      <button class="intro-add-row">＋ 이미지 추가</button>
     </div>`;
+
+  // 전체 삭제
   wrap.querySelector('#intro-del-btn').addEventListener('click', () => {
-    if (!confirm('인트로 이미지를 삭제할까요?')) return;
+    if (!confirm('인트로 이미지를 모두 삭제할까요?')) return;
     introSection = null; renderAll(); toast('인트로 이미지 삭제됨');
   });
-  const upd = () => {
-    const fn = wrap.querySelector('#intro-filename').value.trim();
-    const ext = wrap.querySelector('#intro-ext').value;
-    const dt = wrap.querySelector('#intro-date').value.trim();
-    wrap.querySelector('#intro-preview-hint').textContent = (fn && dt) ? `→ ${dt}/${fn}.${ext}` : '';
-    introSection.filename = fn; introSection.ext = ext; introSection.serverDate = dt;
-  };
-  wrap.querySelector('#intro-filename').addEventListener('input', upd);
-  wrap.querySelector('#intro-ext').addEventListener('change', upd);
-  wrap.querySelector('#intro-date').addEventListener('input', upd);
-  wrap.querySelector('#intro-date').addEventListener('blur', e => { applyNormDate(e.target); upd(); });
-  upd();
+
+  // 각 row 바인딩
+  wrap.querySelectorAll('.intro-img-row').forEach(row => {
+    const idx = +row.dataset.iidx;
+    const dateEl = row.querySelector('.intro-date');
+    dateEl.addEventListener('input', e => { introSection.images[idx].serverDate = e.target.value.trim(); });
+    dateEl.addEventListener('blur', e => { applyNormDate(e.target); introSection.images[idx].serverDate = e.target.value.trim(); });
+    row.querySelector('.intro-fname').addEventListener('input', e => { introSection.images[idx].filename = e.target.value.trim(); });
+    row.querySelector('.intro-ext').addEventListener('change', e => { introSection.images[idx].ext = e.target.value; });
+    row.querySelector('.intro-row-del').addEventListener('click', () => {
+      introSection.images.splice(idx, 1);
+      if (introSection.images.length === 0) {
+        introSection.images.push({serverDate: '', filename: '', ext: 'jpg'});
+      }
+      renderAll();
+    });
+  });
+
+  // + 이미지 추가
+  wrap.querySelector('.intro-add-row').addEventListener('click', () => {
+    // 마지막 row의 서버 날짜를 기본값으로 (편의)
+    const lastDate = introSection.images.length
+      ? introSection.images[introSection.images.length - 1].serverDate
+      : '';
+    introSection.images.push({serverDate: lastDate, filename: '', ext: 'jpg'});
+    renderAll();
+  });
+
   return wrap;
 }
+
 function makeIntroAddZone() {
-  const div = document.createElement('div'); div.style.marginBottom = '16px';
+  const div = document.createElement('div');
+  div.style.marginBottom = '16px';
   div.innerHTML = `<div class="intro-add-zone"><div class="intro-add-zone-inner add-zone-inner"><div class="add-line"></div><button class="add-btn-inline" id="intro-add-btn">＋ 인트로 이미지 추가</button><div class="add-line"></div></div></div>`;
-  div.querySelector('#intro-add-btn').addEventListener('click', () => { introSection = {serverDate:'',filename:'',ext:'jpg'}; renderAll(); });
+  div.querySelector('#intro-add-btn').addEventListener('click', () => {
+    introSection = { images: [{serverDate: '', filename: '', ext: 'jpg'}] };
+    renderAll();
+  });
   return div;
 }
 
@@ -566,15 +601,34 @@ function makeSectionCard(sec, i) {
     dragSrcIdx = i; e.dataTransfer.effectAllowed = 'move';
     setTimeout(() => wrap.classList.add('dragging'), 0);
   });
-  wrap.addEventListener('dragend', () => wrap.classList.remove('dragging'));
-  wrap.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); wrap.classList.add('drag-over'); });
-  wrap.addEventListener('dragleave', () => wrap.classList.remove('drag-over'));
+  wrap.addEventListener('dragend', () => {
+    wrap.classList.remove('dragging', 'drop-before', 'drop-after');
+    document.querySelectorAll('.sec-card.drop-before, .sec-card.drop-after')
+      .forEach(el => el.classList.remove('drop-before', 'drop-after'));
+  });
+  wrap.addEventListener('dragover', e => {
+    e.preventDefault(); e.stopPropagation();
+    if (galDragSec !== null) return; // 이미지 드래그 중이면 섹션 인디케이터 표시 안 함
+    const rect = wrap.getBoundingClientRect();
+    const isBefore = (e.clientY - rect.top) < rect.height / 2;
+    wrap.classList.toggle('drop-before', isBefore);
+    wrap.classList.toggle('drop-after', !isBefore);
+  });
+  wrap.addEventListener('dragleave', () => wrap.classList.remove('drop-before', 'drop-after'));
   wrap.addEventListener('drop', e => {
-    e.preventDefault(); e.stopPropagation(); wrap.classList.remove('drag-over');
+    e.preventDefault(); e.stopPropagation();
+    const wasBefore = wrap.classList.contains('drop-before');
+    wrap.classList.remove('drop-before', 'drop-after');
     if (dragSrcIdx !== null && dragSrcIdx !== i && galDragSec === null) {
-      const [moved] = sections.splice(dragSrcIdx, 1);
-      sections.splice(i, 0, moved);
-      dragSrcIdx = null; renderAll(); toast('섹션 순서 변경됨');
+      const src = dragSrcIdx;
+      let targetIdx = wasBefore ? i : i + 1;
+      if (src < targetIdx) targetIdx--;
+      if (src !== targetIdx) {
+        const [moved] = sections.splice(src, 1);
+        sections.splice(targetIdx, 0, moved);
+        renderAll();
+        toast('섹션 순서 변경됨');
+      }
     }
     dragSrcIdx = null;
   });
@@ -724,11 +778,26 @@ function bindGalleryDrag(wrap, si) {
         else el.classList.add('gal-dragging');
       }, 0);
     });
-    el.addEventListener('dragend', () => { wrap.querySelectorAll('.gal-img').forEach(item => item.classList.remove('gal-dragging')); galDragSec = null; });
-    el.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); el.classList.add('gal-drag-over'); });
-    el.addEventListener('dragleave', () => el.classList.remove('gal-drag-over'));
+    el.addEventListener('dragend', () => {
+      wrap.querySelectorAll('.gal-img').forEach(item => item.classList.remove('gal-dragging', 'gal-drop-before', 'gal-drop-after'));
+      galDragSec = null;
+    });
+    el.addEventListener('dragover', e => {
+      e.preventDefault(); e.stopPropagation();
+      if (!galDragSec || galDragSec.si !== si) return;
+      const rect = el.getBoundingClientRect();
+      const isBefore = (e.clientX - rect.left) < rect.width / 2;
+      // 기존 인디케이터 정리 후 현재만 표시
+      wrap.querySelectorAll('.gal-drop-before, .gal-drop-after')
+        .forEach(item => { if (item !== el) item.classList.remove('gal-drop-before', 'gal-drop-after'); });
+      el.classList.toggle('gal-drop-before', isBefore);
+      el.classList.toggle('gal-drop-after', !isBefore);
+    });
+    el.addEventListener('dragleave', () => el.classList.remove('gal-drop-before', 'gal-drop-after'));
     el.addEventListener('drop', e => {
-      e.preventDefault(); e.stopPropagation(); el.classList.remove('gal-drag-over');
+      e.preventDefault(); e.stopPropagation();
+      const wasBefore = el.classList.contains('gal-drop-before');
+      el.classList.remove('gal-drop-before', 'gal-drop-after');
       if (!galDragSec || galDragSec.si !== si) { galDragSec = null; return; }
       const {imgIdx: fromImg, isMulti} = galDragSec;
       const toImg = +el.dataset.img;
@@ -741,13 +810,20 @@ function bindGalleryDrag(wrap, si) {
         const selItems = imgs.filter(img => sel.has(img.filename));
         const rest = imgs.filter(img => !sel.has(img.filename));
         let at = rest.length;
-        if (targetFile && !sel.has(targetFile)) { at = rest.findIndex(img => img.filename === targetFile); if (at < 0) at = rest.length; }
+        if (targetFile && !sel.has(targetFile)) {
+          at = rest.findIndex(img => img.filename === targetFile);
+          if (at < 0) at = rest.length;
+          if (!wasBefore) at++;
+        }
         rest.splice(at, 0, ...selItems);
         sec.images = rest;
         toast(`${selItems.length}개 이동됨`);
       } else {
-        if (fromImg === toImg) { galDragSec = null; return; }
-        const [mv] = imgs.splice(fromImg, 1); imgs.splice(toImg, 0, mv);
+        let targetIdx = wasBefore ? toImg : toImg + 1;
+        if (fromImg < targetIdx) targetIdx--;
+        if (fromImg === targetIdx) { galDragSec = null; return; }
+        const [mv] = imgs.splice(fromImg, 1);
+        imgs.splice(targetIdx, 0, mv);
         toast('이미지 순서 변경됨');
       }
       // 드래그 완료 후 선택 해제
@@ -855,15 +931,18 @@ async function generate() {
   const snapfitCode = document.getElementById('snapfit-code').value.trim();
   const showWarn   = document.getElementById('toggle-warning').checked;
 
-  let introUrl = null;
+  // 인트로 URL 수집 (이미지마다 서버 날짜 개별)
+  const introUrls = [];
   if (introSection) {
-    const fn = introSection.filename.trim(), dt = introSection.serverDate.trim();
-    if (fn && dt) introUrl = imgUrl(dt, `${fn}.${introSection.ext}`);
-    else { toast('인트로: 파일명과 서버 날짜를 입력해 주세요'); return; }
+    for (const img of introSection.images) {
+      const fn = img.filename.trim();
+      const dt = img.serverDate.trim();
+      if (!fn || !dt) continue;
+      introUrls.push(imgUrl(dt, `${fn}.${img.ext}`));
+    }
   }
 
-  const allUrls = [];
-  if (introUrl) allUrls.push(introUrl);
+  const allUrls = [...introUrls];
   sections.forEach(s => s.images.forEach(img => allUrls.push(imgUrl(s.serverDate, img.filename))));
   if (detailImg && detailDate) allUrls.push(imgUrl(detailDate, detailImg));
   if (!allUrls.length) { toast('이미지를 추가해 주세요'); return; }
@@ -886,21 +965,20 @@ async function generate() {
     if (ok) validSet.add(url); else removed.push(url.split('/').pop().split('?')[0]);
   }));
 
-  sections.forEach((sec, si) => {
+  // 섹션별 경고만 표시 (자동 삭제 안 함)
+  sections.forEach((sec) => {
     const card = document.querySelector(`.sec-card[data-secid="${sec.id}"]`);
-    const removedInSec = sec.images.filter(img => !validSet.has(imgUrl(sec.serverDate, img.filename)));
-    if (removedInSec.length === 0) { if (card) card.querySelector('.gallery-removed').style.display = 'none'; return; }
-    sec.images = sec.images.filter(img => validSet.has(imgUrl(sec.serverDate, img.filename)));
-    const s = galSelected.get(sec.id); if (s) removedInSec.forEach(img => s.delete(img.filename));
+    if (!card) return;
+    const missing = sec.images.filter(img => !validSet.has(imgUrl(sec.serverDate, img.filename)));
+    const notice = card.querySelector('.gallery-removed');
+    if (missing.length === 0) { notice.style.display = 'none'; return; }
     openGalleries.add(sec.id);
-    if (card) {
-      refreshGallery(card, si);
-      card.querySelector('.sec-gallery').classList.add('open');
-      card.querySelector('[data-arrow]').classList.add('open');
-      const notice = card.querySelector('.gallery-removed');
-      notice.style.display = 'block';
-      notice.innerHTML = `<strong>⚠ ${removedInSec.length}개 이미지가 서버에 없어 삭제되었습니다</strong><br>` + removedInSec.map(img => `· ${img.filename}`).join('<br>');
-    }
+    card.querySelector('.sec-gallery').classList.add('open');
+    card.querySelector('[data-arrow]').classList.add('open');
+    notice.style.display = 'block';
+    notice.innerHTML =
+      `<strong>⚠ ${missing.length}개 이미지가 서버에 없습니다 (HTML 생성 시 자동 제외)</strong><br>` +
+      missing.map(img => `· ${img.filename}`).join('<br>');
   });
 
   if (validSet.size === 0 && allUrls.length > 0) {
@@ -919,30 +997,44 @@ async function generate() {
 
   const BR5 = '\t<br>\n\t<br>\n\t<br>\n\t<br>\n\t<br>\n';
   let html = `<div style="text-align: center;">\n\t<!--상세-->\n\n\t<br>\n\t<br>\n\t<br>\n\t<br>\n\t<br>\n\n`;
-  if (introUrl && validSet.has(introUrl)) {
-    html += `\t<p style="text-align: center;"><img src="${introUrl}"></p>\n${BR5}\n`;
-    if (showWarn) html += `\t<br>\n\t *밝은 컬러의 경우 비칠 우려가 있으니\n\t<br> 스킨 컬러의 이너를 착용하시는걸 권장합니다\n\t<br>\n\t<br>\n\t<br>\n\t<br>\n\t<br>\n\t<br>\n`;
+
+  // 인트로 (다중 이미지) — validSet에 있는 것만
+  let introShown = false;
+  for (const u of introUrls) {
+    if (!validSet.has(u)) continue;
+    html += `\t<p style="text-align: center;"><img src="${u}"></p>\n${BR5}\n`;
+    introShown = true;
   }
+  if (introShown && showWarn) {
+    html += `\t<br>\n\t *밝은 컬러의 경우 비칠 우려가 있으니\n\t<br> 스킨 컬러의 이너를 착용하시는걸 권장합니다\n\t<br>\n\t<br>\n\t<br>\n\t<br>\n\t<br>\n\t<br>\n`;
+  }
+
+  // 섹션 — 각 섹션에서 validSet에 있는 이미지만
   for (const sec of sections) {
-    if (!sec.images.length) continue;
+    const validImgs = sec.images.filter(img => validSet.has(imgUrl(sec.serverDate, img.filename)));
+    if (!validImgs.length) continue;
     const label = (sec.comment || sec.name).trim().replace(/-->/g, '--&gt;');
     html += `\n\t<!--${label}-->\n\n`;
-    for (const img of sec.images) html += `\t<p style="text-align: center;"><img src="${imgUrl(sec.serverDate, img.filename)}"></p>\n${BR5}\n\n`;
+    for (const img of validImgs) {
+      html += `\t<p style="text-align: center;"><img src="${imgUrl(sec.serverDate, img.filename)}"></p>\n${BR5}\n\n`;
+    }
   }
+
   if (detailImg && detailDate) {
     const du = imgUrl(detailDate, detailImg);
     if (validSet.has(du)) { html += `\n\t<!--디테일-->\n\n\t<p style="text-align: center;"><img src="${du}"></p>\n${BR5}\n`; }
   }
   if (snapfitCode) {
-    // 탭 들여쓰기로 각 줄 정렬 (원본 HTML의 들여쓰기 스타일과 맞춤)
-    const indented = snapfitCode.split('\n').map(line => '\t' + line).join('\n');
+    const indented = snapfitCode.split('\n').map(line => line.trim() ? '\t' + line : '').join('\n');
     html += `\n\t<!--스냅핏-->\n${indented}\n`;
   }
   html += `\n</div>`;
 
   document.getElementById('out-html').value = html;
   const tot = sections.reduce((s,sec)=>s+sec.images.length,0);
-  document.getElementById('out-meta').textContent = `섹션 ${sections.length}개 · 이미지 ${tot}장`+(introSection?' · 인트로 포함':'');
+  const introCount = introSection ? introSection.images.filter(i => i.filename.trim()).length : 0;
+  document.getElementById('out-meta').textContent =
+    `섹션 ${sections.length}개 · 이미지 ${tot}장` + (introCount ? ` · 인트로 ${introCount}장` : '');
   document.getElementById('output-wrap').style.display = '';
   genBtn.disabled = false; genBtn.textContent = 'HTML 생성';
   progressWrap.style.display = 'none'; progressLbl.style.display = 'none';
