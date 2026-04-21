@@ -465,6 +465,36 @@ function makeIntroCard() {
       <span class="intro-card-title">인트로 이미지</span>
       <button class="intro-del-btn" id="intro-del-btn">전체 삭제</button>
     </div>
+
+    <!-- 시그니처 패널 -->
+    <div class="sig-panel" style="margin-bottom:12px;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
+      <label class="sig-toggle-row" style="display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;font-size:13px;color:var(--t)">
+        <input type="checkbox" id="sig-check" ${introSection.sigEnabled ? 'checked' : ''} style="width:14px;height:14px;accent-color:var(--ink);cursor:pointer">
+        시그니처 (코드명 하나로 여러 장 자동 입력)
+      </label>
+      <div class="sig-inputs" style="display:${introSection.sigEnabled ? 'flex' : 'none'};gap:8px;margin-top:10px;flex-wrap:wrap;align-items:flex-end">
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <label style="font-size:11px;color:var(--tm)">서버 날짜</label>
+          <input type="text" id="sig-date" value="${escH(introSection.sigDate||'')}" placeholder="2026/02/02" style="width:130px;font-size:12px;padding:6px 9px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--t);outline:none">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:180px">
+          <label style="font-size:11px;color:var(--tm)">코드명 (예: base_10 → 1~10장 자동)</label>
+          <input type="text" id="sig-code" value="${escH(introSection.sigCode||'')}" placeholder="코드명을 적어주세요" style="font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--t);outline:none;width:100%">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <label style="font-size:11px;color:var(--tm)">확장자</label>
+          <select id="sig-ext" style="width:80px;font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--t);outline:none;cursor:pointer">
+            <option value="jpg"  ${(introSection.sigExt||'jpg')==='jpg'  ? 'selected' : ''}>jpg</option>
+            <option value="jpeg" ${(introSection.sigExt||'jpg')==='jpeg' ? 'selected' : ''}>jpeg</option>
+            <option value="png"  ${(introSection.sigExt||'jpg')==='png'  ? 'selected' : ''}>png</option>
+            <option value="gif"  ${(introSection.sigExt||'jpg')==='gif'  ? 'selected' : ''}>gif</option>
+            <option value="webp" ${(introSection.sigExt||'jpg')==='webp' ? 'selected' : ''}>webp</option>
+          </select>
+        </div>
+        <button id="sig-apply" class="btn btn-primary btn-sm" style="align-self:flex-end">적용</button>
+      </div>
+    </div>
+
     <div class="field" style="margin-bottom:0">
       <label>이미지 목록 (서버 날짜 · 파일명 · 확장자, 순서대로 출력됨)</label>
       <div class="intro-imgs-list">${imgRowsHTML}</div>
@@ -476,6 +506,54 @@ function makeIntroCard() {
     if (!confirm('인트로 이미지를 모두 삭제할까요?')) return;
     introSection = null; renderAll(); toast('인트로 이미지 삭제됨');
   });
+
+  // 시그니처 체크박스 토글
+  const sigCheck = wrap.querySelector('#sig-check');
+  const sigInputs = wrap.querySelector('.sig-inputs');
+  sigCheck.addEventListener('change', e => {
+    introSection.sigEnabled = e.target.checked;
+    sigInputs.style.display = e.target.checked ? 'flex' : 'none';
+  });
+
+  // 시그니처 날짜 blur 정규화
+  const sigDateEl = wrap.querySelector('#sig-date');
+  if (sigDateEl) {
+    sigDateEl.addEventListener('input', e => { introSection.sigDate = e.target.value.trim(); });
+    sigDateEl.addEventListener('blur', e => { applyNormDate(e.target); introSection.sigDate = e.target.value.trim(); });
+  }
+  const sigCodeEl = wrap.querySelector('#sig-code');
+  if (sigCodeEl) sigCodeEl.addEventListener('input', e => { introSection.sigCode = e.target.value.trim(); });
+  const sigExtEl  = wrap.querySelector('#sig-ext');
+  if (sigExtEl)  sigExtEl.addEventListener('change', e => { introSection.sigExt = e.target.value; });
+
+  // 시그니처 적용 버튼
+  const sigApply = wrap.querySelector('#sig-apply');
+  if (sigApply) {
+    sigApply.addEventListener('click', () => {
+      const sd   = (wrap.querySelector('#sig-date')?.value || '').trim();
+      const code = (wrap.querySelector('#sig-code')?.value || '').trim();
+      const ext  = wrap.querySelector('#sig-ext')?.value || 'jpg';
+      if (!sd)   { toast('서버 날짜를 입력해 주세요'); return; }
+      if (!code) { toast('코드명을 입력해 주세요');    return; }
+
+      // resolveFilenames와 동일한 방식으로 파일명 목록 생성
+      const fns = resolveFilenames(code);
+      if (!fns.length) { toast('코드명을 올바르게 입력해 주세요'); return; }
+
+      // 확장자 강제 교체 (sig-ext 선택값으로)
+      const normalized = fns.map(f => f.replace(/\.\w+$/, '') + '.' + ext);
+
+      // 기존 이미지 목록에 추가 (기존 + 이미지 추가 버튼과 같은 동작)
+      normalized.forEach(filename => {
+        introSection.images.push({ serverDate: sd, filename: filename.replace(/\.\w+$/, ''), ext });
+      });
+      introSection.sigCode = code;
+      introSection.sigDate = sd;
+      introSection.sigExt  = ext;
+      renderAll();
+      toast(`시그니처 ${normalized.length}장 추가됨`);
+    });
+  }
 
   // 각 row 바인딩
   wrap.querySelectorAll('.intro-img-row').forEach(row => {
@@ -496,7 +574,6 @@ function makeIntroCard() {
 
   // + 이미지 추가
   wrap.querySelector('.intro-add-row').addEventListener('click', () => {
-    // 마지막 row의 서버 날짜를 기본값으로 (편의)
     const lastDate = introSection.images.length
       ? introSection.images[introSection.images.length - 1].serverDate
       : '';
@@ -512,7 +589,7 @@ function makeIntroAddZone() {
   div.style.marginBottom = '16px';
   div.innerHTML = `<div class="intro-add-zone"><div class="intro-add-zone-inner add-zone-inner"><div class="add-line"></div><button class="add-btn-inline" id="intro-add-btn">＋ 인트로 이미지 추가</button><div class="add-line"></div></div></div>`;
   div.querySelector('#intro-add-btn').addEventListener('click', () => {
-    introSection = { images: [{serverDate: '', filename: '', ext: 'jpg'}] };
+    introSection = { images: [{serverDate: '', filename: '', ext: 'jpg'}], sigEnabled: false, sigDate: '', sigCode: '', sigExt: 'jpg' };
     renderAll();
   });
   return div;
