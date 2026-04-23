@@ -1537,7 +1537,8 @@ function buildIntroHtml(intro, validSet) {
   imgs.forEach((img, idx) => {
     const u = imgUrl(intro.serverDate, img.filename);
     html += `\t<p style="text-align: center;"><img src="${u}"></p>\n`;
-    if (idx === 0 || idx === imgs.length - 1) html += BR5 + '\n';
+    // 마지막 이미지 뒤에만 BR5
+    if (idx === imgs.length - 1) html += BR5 + '\n';
   });
   return html;
 }
