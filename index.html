@@ -79,6 +79,21 @@ select{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%
 .code-panel textarea:focus{border-color:#555}
 .code-edited-badge{font-size:10px;color:var(--amber-t);background:var(--amber-bg);border:1px solid var(--amber-bd);padding:1px 7px;border-radius:99px;margin-left:4px}
 
+/* ── 디테일 카드 ── */
+.detail-card{background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;transition:border-color .2s,box-shadow .2s;margin-bottom:0}
+.detail-card:hover{border-color:var(--border2);box-shadow:0 1px 4px rgba(0,0,0,.06)}
+.detail-header{display:flex;align-items:center;gap:10px;padding:12px 14px 12px 10px}
+.detail-thumb{width:80px;height:104px;border-radius:8px;overflow:hidden;background:var(--surface);flex-shrink:0;border:1px solid var(--border)}
+.detail-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.detail-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.detail-del-btn{background:none;border:1px solid var(--red-bd);color:var(--red);font-size:11px;padding:4px 8px;border-radius:6px;cursor:pointer;transition:all .15s;white-space:nowrap;flex-shrink:0}
+.detail-del-btn:hover{background:var(--red-bg)}
+.detail-code-panel{border-top:1px solid var(--border)}
+
+/* ── 디테일 존 ── */
+.detail-zone{margin-top:16px}
+.detail-zone-inner{display:flex;flex-direction:column;gap:8px}
+
 /* ── Section card ── */
 .sec-card{background:var(--card);border:1px solid var(--border);border-radius:12px;margin-bottom:0;overflow:hidden;transition:border-color .2s,box-shadow .2s}
 .sec-card:hover{border-color:var(--border2);box-shadow:0 1px 4px rgba(0,0,0,.06)}
@@ -221,13 +236,13 @@ textarea[readonly]{cursor:default}
   <!-- ── 인트로 고정 영역 ── -->
   <div id="intro-container" style="margin-bottom:0"></div>
 
-  <!-- ── 섹션 편집 ── -->
-  <div class="step-lbl" style="margin-top:16px">
-    섹션 편집
-    <span class="step-note">왼쪽 점 핸들 드래그 → 섹션 순서 변경 &nbsp;·&nbsp; 카드 클릭 → 이미지 보기 &amp; 삭제</span>
-  </div>
+  <div id="sections-list" style="margin-top:16px"></div>
 
-  <div id="sections-list"></div>
+  <!-- ── 디테일 고정 영역 ── -->
+  <div class="detail-zone">
+    <div class="detail-zone-inner" id="detail-list"></div>
+    <div id="detail-add-zone"></div>
+  </div>
 
   <!-- ── 스냅핏 ── -->
   <div class="card" style="margin-top:16px">
@@ -273,10 +288,13 @@ textarea[readonly]{cursor:default}
 //  State
 // ──────────────────────────────────────────
 let sections      = [];   // 일반 이미지 섹션만
-let introSection  = null; // {serverDate, images:[{filename}]} 인트로 전용
+let introSections = [];   // [{id, serverDate, code, images, _rawCode}] 인트로 목록
+let detailSections = [];  // [{id, serverDate, filename, _rawCode}] 디테일 목록
 let openGalleries = new Set();
 let dragSrcIdx    = null;
 let galDragSec    = null;
+let introDragIdx  = null;
+let detailDragIdx = null;
 let _toastT;
 
 const galSelected  = new Map();
@@ -368,6 +386,26 @@ document.addEventListener('keydown', e => {
 // ──────────────────────────────────────────
 //  Filename resolution
 // ──────────────────────────────────────────
+// 인트로 전용: 제로패딩 (01, 02 ... 09, 10, 11...)
+function resolveIntroFilenames(raw) {
+  const trimmed = raw.trim();
+  const m = trimmed.match(/^(.+?)_(\d+)(\.\w+)?$/i);
+  if (m) {
+    const stem = m[1];
+    const max  = parseInt(m[2], 10);
+    const ext  = m[3] || '.jpg';
+    if (max >= 1 && max <= 300) {
+      const pad = max >= 100 ? 3 : 2;
+      return Array.from({length: max}, (_, i) => {
+        const n = String(i + 1).padStart(pad, '0');
+        return `${stem}_${n}${ext}`;
+      });
+    }
+  }
+  // 단일 파일명 그대로
+  return [/\.\w+$/.test(trimmed) ? trimmed : trimmed + '.jpg'];
+}
+
 function resolveFilenames(raw) {
   const parts = raw.split(',').map(s => s.trim()).filter(Boolean);
   if (parts.length === 1) {
@@ -416,11 +454,16 @@ function applyNormDate(input, updateSec, si) {
 //  Render
 // ──────────────────────────────────────────
 function renderAll() {
-  // 인트로 고정 카드
+  // 인트로 고정 카드 (배열) — 카드 사이에 drop-zone 삽입
   const introEl = document.getElementById('intro-container');
   if (introEl) {
     introEl.innerHTML = '';
-    introEl.appendChild(introSection ? makeIntroCard() : makeIntroAddZone());
+    introEl.appendChild(makeIntroDropZone(0));
+    introSections.forEach((intro, i) => {
+      introEl.appendChild(makeIntroCard(intro, i));
+      introEl.appendChild(makeIntroDropZone(i + 1));
+    });
+    introEl.appendChild(makeIntroAddZone());
   }
 
   const list = document.getElementById('sections-list');
@@ -439,29 +482,51 @@ function renderAll() {
     list.appendChild(card);
     list.appendChild(makeAddZone(i + 1));
   });
+
+  // 디테일 카드 목록 렌더링 — 카드 사이에 drop-zone 삽입
+  const detailList = document.getElementById('detail-list');
+  if (detailList) {
+    detailList.innerHTML = '';
+    detailList.appendChild(makeDetailDropZone(0));
+    detailSections.forEach((det, i) => {
+      detailList.appendChild(makeDetailCard(det, i));
+      detailList.appendChild(makeDetailDropZone(i + 1));
+    });
+  }
+  const detailAddZone = document.getElementById('detail-add-zone');
+  if (detailAddZone) {
+    detailAddZone.innerHTML = '';
+    detailAddZone.appendChild(makeDetailAddZone());
+  }
 }
 
 // ──────────────────────────────────────────
-//  인트로 고정 카드
+//  인트로 카드 (배열 아이템)
 // ──────────────────────────────────────────
-function makeIntroCard() {
+function makeIntroCard(intro, i) {
   const wrap = document.createElement('div');
   wrap.className = 'intro-fixed-card';
+  wrap.style.marginBottom = '8px';
+  wrap.dataset.introid = intro.id;
 
   wrap.innerHTML = `
     <div class="sec-header" style="cursor:default">
-      <div style="width:14px;flex-shrink:0"></div>
+      <div class="drag-handle" title="드래그로 순서 변경">
+        <div class="dd-row"><div class="dd"></div><div class="dd"></div></div>
+        <div class="dd-row"><div class="dd"></div><div class="dd"></div></div>
+        <div class="dd-row"><div class="dd"></div><div class="dd"></div></div>
+      </div>
       <div class="sec-thumb"><div class="no-img">📷</div></div>
       <div class="sec-info">
         <div class="date-row">
           <span class="date-lbl">서버 날짜</span>
-          <input class="date-input intro-sd" type="text" value="${escH(introSection.serverDate||'')}" placeholder="2026/02/02">
+          <input class="date-input intro-sd" type="text" value="${escH(intro.serverDate||'')}" placeholder="2026/02/02">
         </div>
         <div class="cmt-row">
           <span class="cmt-lbl">코드명</span>
-          <input class="cmt-input intro-code" type="text" value="${escH(introSection.code||'')}" placeholder="코드명을 적어주세요">
+          <input class="cmt-input intro-code" type="text" value="${escH(intro.code||'')}" placeholder="코드명을 적어주세요">
         </div>
-        <div class="sec-meta">인트로 · ${introSection.images.length}장</div>
+        <div class="sec-meta">인트로 · ${intro.images.length}장</div>
       </div>
       <div class="sec-right">
         <button class="sec-del-btn intro-del">삭제</button>
@@ -473,140 +538,154 @@ function makeIntroCard() {
         <span>인트로 이미지 목록 (더블클릭 → 크게 보기)</span>
         <button class="code-view-btn" data-intro-code-btn title="HTML 코드 직접 보기/수정">&lt;/&gt;</button>
       </div>
-      <div class="gallery-grid">${renderGalleryItems({id:'__intro__', serverDate:introSection.serverDate||'', images:introSection.images}, -1)}</div>
+      <div class="gallery-grid">${renderGalleryItems({id:'__intro__'+i, serverDate:intro.serverDate||'', images:intro.images}, -1)}</div>
       <div class="intro-code-panel code-panel">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-          <span style="font-size:11px;color:var(--tm)">인트로(써머리) 블록의 HTML 코드를 직접 수정할 수 있습니다.</span>
-          <button class="btn btn-sm intro-code-reset-btn" style="font-size:11px">초기화</button>
+          <span style="font-size:11px;color:var(--tm)">인트로(써머리) HTML 코드를 직접 수정할 수 있습니다.</span>
+          <button class="btn btn-sm intro-code-reset" style="font-size:11px">초기화</button>
         </div>
-        <textarea class="intro-code-textarea" placeholder="HTML 생성 후 이 곳에 코드가 표시됩니다."></textarea>
+        <textarea class="intro-code-ta" placeholder="HTML 생성 후 표시됩니다."></textarea>
       </div>
     </div>`;
 
-  const thumbEl = wrap.querySelector('.sec-thumb');
-  const gallery = wrap.querySelector('.sec-gallery');
-  const arrow   = wrap.querySelector('[data-arrow]');
-  const sdInp   = wrap.querySelector('.intro-sd');
-  const codeInp = wrap.querySelector('.intro-code');
-  const delBtn  = wrap.querySelector('.intro-del');
+  const thumbEl  = wrap.querySelector('.sec-thumb');
+  const gallery  = wrap.querySelector('.sec-gallery');
+  const arrow    = wrap.querySelector('[data-arrow]');
+  const dragH    = wrap.querySelector('.drag-handle');
+  const sdInp    = wrap.querySelector('.intro-sd');
+  const codeInp  = wrap.querySelector('.intro-code');
+  const delBtn   = wrap.querySelector('.intro-del');
+  const codeBtn  = wrap.querySelector('[data-intro-code-btn]');
+  const codePanel= wrap.querySelector('.intro-code-panel');
+  const codeTa   = wrap.querySelector('.intro-code-ta');
+  const resetBtn = wrap.querySelector('.intro-code-reset');
 
-  // 갤러리 토글 (헤더 클릭)
   wrap.querySelector('.sec-header').addEventListener('click', e => {
-    if ([sdInp, codeInp, delBtn].some(el => el.contains(e.target))) return;
+    if ([dragH, sdInp, codeInp, delBtn].some(el => el && el.contains(e.target))) return;
     const open = gallery.classList.toggle('open');
     arrow.classList.toggle('open', open);
     if (open) requestAnimationFrame(() => loadGalleryImages(gallery.querySelector('.gallery-grid')));
   });
 
-  // 서버 날짜
-  let _st;
-  sdInp.addEventListener('input', e => {
-    introSection.serverDate = e.target.value.trim();
-    clearTimeout(_st); _st = setTimeout(() => refreshIntroGallery(wrap), 500);
+  // 드래그 — dot 핸들에 직접 이벤트 (버블링 문제 회피)
+  dragH.addEventListener('mousedown', () => { wrap.draggable = true; });
+  dragH.addEventListener('mouseup', () => { wrap.draggable = false; });
+  wrap.draggable = false;
+  wrap.addEventListener('dragstart', e => {
+    if (!wrap.draggable) { e.preventDefault(); return; }
+    introDragIdx = i;
+    e.dataTransfer.effectAllowed = 'move';
+    e.stopPropagation();
+    setTimeout(() => wrap.classList.add('dragging'), 0);
   });
-  sdInp.addEventListener('blur', e => {
-    applyNormDate(e.target);
-    introSection.serverDate = e.target.value.trim();
-    clearTimeout(_st); refreshIntroGallery(wrap);
+  wrap.addEventListener('dragend', () => {
+    wrap.draggable = false;
+    wrap.classList.remove('dragging');
+    document.querySelectorAll('#intro-container .add-zone.drop-target')
+      .forEach(z => z.classList.remove('drop-target'));
+    introDragIdx = null;
   });
 
-  // 코드명 → 파일 목록 자동 생성
+  let _st;
+  sdInp.addEventListener('input', e => {
+    intro.serverDate = e.target.value.trim();
+    clearTimeout(_st); _st = setTimeout(() => refreshIntroGallery(wrap, intro), 500);
+  });
+  sdInp.addEventListener('blur', e => {
+    applyNormDate(e.target); intro.serverDate = e.target.value.trim();
+    clearTimeout(_st); refreshIntroGallery(wrap, intro);
+  });
   codeInp.addEventListener('blur', () => {
     const raw = codeInp.value.trim();
     if (!raw) return;
-    const fns = resolveFilenames(raw);
+    const fns = resolveIntroFilenames(raw);
     if (!fns.length) return;
-    introSection.images = fns.map(f => ({filename: f}));
-    introSection.code = raw;
-    refreshIntroGallery(wrap);
+    intro.images = fns.map(f => ({filename: f}));
+    intro.code = raw;
+    refreshIntroGallery(wrap, intro);
   });
 
-  // 삭제
-  delBtn.addEventListener('click', () => {
-    if (!confirm('인트로 섹션을 삭제할까요?')) return;
-    introSection = null; renderAll(); toast('인트로 삭제됨');
-  });
-
-  // 인트로 코드 보기 버튼
-  const introCBtn   = wrap.querySelector('[data-intro-code-btn]');
-  const introPanel  = wrap.querySelector('.intro-code-panel');
-  const introTa     = wrap.querySelector('.intro-code-textarea');
-  const introReset  = wrap.querySelector('.intro-code-reset-btn');
-
-  introCBtn.addEventListener('click', e => {
+  codeBtn.addEventListener('click', e => {
     e.stopPropagation();
-    const open = introPanel.classList.toggle('open');
-    introCBtn.classList.toggle('active', open);
-    if (open && introTa.value === '') {
-      introTa.value = introSection._rawCode || buildIntroHtml();
-    }
+    const open = codePanel.classList.toggle('open');
+    codeBtn.classList.toggle('active', open);
+    if (open && !codeTa.value) codeTa.value = intro._rawCode || buildIntroHtml(intro);
   });
-  introTa.addEventListener('input', () => {
-    introSection._rawCode = introTa.value;
+  codeTa.addEventListener('input', () => {
+    intro._rawCode = codeTa.value;
     let badge = wrap.querySelector('.code-edited-badge');
     if (!badge) {
       badge = document.createElement('span');
-      badge.className = 'code-edited-badge';
-      badge.textContent = '수정됨';
+      badge.className = 'code-edited-badge'; badge.textContent = '수정됨';
       wrap.querySelector('.sec-meta').appendChild(badge);
     }
   });
-  introReset.addEventListener('click', e => {
+  resetBtn.addEventListener('click', e => {
     e.stopPropagation();
-    delete introSection._rawCode;
-    introTa.value = buildIntroHtml();
-    const badge = wrap.querySelector('.code-edited-badge');
-    if (badge) badge.remove();
+    delete intro._rawCode;
+    codeTa.value = buildIntroHtml(intro);
+    wrap.querySelector('.code-edited-badge')?.remove();
     toast('인트로 코드 초기화됨');
   });
-
-  if (introSection._rawCode) {
-    const badge = document.createElement('span');
-    badge.className = 'code-edited-badge';
-    badge.textContent = '수정됨';
-    wrap.querySelector('.sec-meta').appendChild(badge);
-  }
-
-  // 인트로 갤러리 더블클릭 라이트박스 연결
-  requestAnimationFrame(() => {
-    loadThumb(thumbEl, introSection.images[0]
-      ? imgUrl(introSection.serverDate||'', introSection.images[0].filename) : null);
-    bindIntroGallery(wrap);
+  delBtn.addEventListener('click', () => {
+    if (!confirm('인트로 섹션을 삭제할까요?')) return;
+    introSections.splice(i, 1);
+    renderAll(); toast('인트로 삭제됨');
   });
 
+  if (intro._rawCode) {
+    const badge = document.createElement('span');
+    badge.className = 'code-edited-badge'; badge.textContent = '수정됨';
+    wrap.querySelector('.sec-meta').appendChild(badge);
+  }
+  requestAnimationFrame(() => {
+    loadThumb(thumbEl, intro.images[0]
+      ? imgUrl(intro.serverDate||'', intro.images[0].filename) : null);
+    bindIntroGallery(wrap, intro);
+  });
   return wrap;
 }
 
-function refreshIntroGallery(wrap) {
-  const fakeSecForRender = {id:'__intro__', serverDate:introSection.serverDate||'', images:introSection.images};
+function refreshIntroGallery(wrap, intro) {
   const grid = wrap.querySelector('.gallery-grid');
-  grid.innerHTML = renderGalleryItems(fakeSecForRender, -1);
+  grid.innerHTML = renderGalleryItems({id:'__intro__', serverDate:intro.serverDate||'', images:intro.images}, -1);
   loadGalleryImages(grid);
   loadThumb(wrap.querySelector('.sec-thumb'),
-    introSection.images[0] ? imgUrl(introSection.serverDate||'', introSection.images[0].filename) : null);
-  wrap.querySelector('.sec-meta').textContent = `인트로 · ${introSection.images.length}장`;
-  bindIntroGallery(wrap);
+    intro.images[0] ? imgUrl(intro.serverDate||'', intro.images[0].filename) : null);
+  const meta = wrap.querySelector('.sec-meta');
+  meta.textContent = `인트로 · ${intro.images.length}장`;
+  if (intro._rawCode) {
+    const badge = document.createElement('span');
+    badge.className = 'code-edited-badge'; badge.textContent = '수정됨';
+    meta.appendChild(badge);
+  }
+  bindIntroGallery(wrap, intro);
 }
 
-function bindIntroGallery(wrap) {
-  wrap.querySelectorAll('.gal-img').forEach((el, n) => {
-    el.addEventListener('dblclick', e => {
-      e.stopPropagation();
-      const urls = introSection.images.map(img => imgUrl(introSection.serverDate||'', img.filename));
-      lbOpen(urls, n);
-    });
-    // 삭제 버튼
-    el.querySelector('.gal-del')?.addEventListener('click', ev => {
-      ev.stopPropagation();
-      introSection.images.splice(n, 1);
-      refreshIntroGallery(wrap);
-    });
+function bindIntroGallery(wrap, intro) {
+  bindGalleryDrag(wrap, null, {
+    getId:      () => '__intro__' + intro.id,
+    getImages:  () => intro.images,
+    getUrls:    () => intro.images.map(img => imgUrl(intro.serverDate||'', img.filename)),
+    onRefresh:  () => refreshIntroGallery(wrap, intro),
+    onDelete:   (n) => {
+      intro.images.splice(n, 1);
+      refreshIntroGallery(wrap, intro);
+    }
   });
 }
 
+// 아우트로 고정 프리셋
+const OUTRO_PRESETS = [
+  { label: '베이직', filename: 'poneque_outro_01.jpg' },
+  { label: '스웨트', filename: 'poneque_outro_02.jpg' },
+  { label: '펀칭',   filename: 'poneque_outro_03.jpg' },
+];
+const OUTRO_DATE = '2026/04/20';
+
 function makeIntroAddZone() {
   const div = document.createElement('div');
-  div.className = 'intro-add-zone';
+  div.className = 'add-zone';
   div.innerHTML = `
     <div class="add-zone-inner">
       <div class="add-line"></div>
@@ -624,33 +703,328 @@ function makeIntroAddZone() {
           <input type="text" class="intro-ap-code" placeholder="코드명을 적어주세요">
         </div>
       </div>
-      <div class="add-panel-row">
+      <div class="add-panel-row" style="justify-content:flex-start;gap:8px;flex-wrap:wrap">
         <button class="btn btn-primary btn-sm intro-ap-add">추가</button>
         <button class="btn btn-sm intro-ap-cancel">취소</button>
+        <div style="flex:1;min-width:16px"></div>
+        ${OUTRO_PRESETS.map(p => `<button class="btn btn-sm outro-preset" data-filename="${p.filename}" style="color:var(--tm);font-size:12px">${p.label}</button>`).join('')}
       </div>
     </div>`;
 
-  const btn   = div.querySelector('#intro-add-btn');
-  const panel = div.querySelector('.add-panel');
-  btn.addEventListener('click', () => { panel.style.display=''; btn.style.display='none'; div.querySelector('.intro-ap-date').focus(); });
+  const addBtn = div.querySelector('#intro-add-btn');
+  const panel  = div.querySelector('.add-panel');
+  addBtn.addEventListener('click', () => { panel.style.display=''; addBtn.style.display='none'; div.querySelector('.intro-ap-date').focus(); });
   div.querySelector('.intro-ap-date').addEventListener('blur', e => applyNormDate(e.target));
-  div.querySelector('.intro-ap-cancel').addEventListener('click', () => { panel.style.display='none'; btn.style.display=''; });
+  div.querySelector('.intro-ap-cancel').addEventListener('click', () => { panel.style.display='none'; addBtn.style.display=''; });
   div.querySelector('.intro-ap-add').addEventListener('click', () => {
     const sd  = div.querySelector('.intro-ap-date').value.trim();
     const raw = div.querySelector('.intro-ap-code').value.trim();
     if (!sd)  { toast('서버 날짜를 입력해 주세요'); return; }
     if (!raw) { toast('코드명을 입력해 주세요');    return; }
-    const fns = resolveFilenames(raw);
+    const fns = resolveIntroFilenames(raw);
     if (!fns.length) { toast('파일을 찾을 수 없어요'); return; }
-    introSection = { serverDate: sd, code: raw, images: fns.map(f => ({filename: f})) };
+    introSections.push({ id: uid(), serverDate: sd, code: raw, images: fns.map(f => ({filename: f})) });
     renderAll(); toast(`인트로 추가됨 (${fns.length}장)`);
+  });
+  div.querySelectorAll('.outro-preset').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const filename = btn.dataset.filename;
+      introSections.push({ id: uid(), serverDate: OUTRO_DATE, code: filename, images: [{ filename }] });
+      renderAll(); toast(`${btn.textContent} 추가됨`);
+    });
   });
   return div;
 }
 
 // ──────────────────────────────────────────
-//  Section Card
+//  디테일 카드
 // ──────────────────────────────────────────
+function makeDetailCard(det, i) {
+  const wrap = document.createElement('div');
+  wrap.className = 'detail-card';
+  wrap.dataset.detid = det.id;
+
+  wrap.innerHTML = `
+    <div class="detail-header">
+      <div class="drag-handle" title="드래그로 순서 변경">
+        <div class="dd-row"><div class="dd"></div><div class="dd"></div></div>
+        <div class="dd-row"><div class="dd"></div><div class="dd"></div></div>
+        <div class="dd-row"><div class="dd"></div><div class="dd"></div></div>
+      </div>
+      <div class="detail-thumb"><div class="no-img">📷</div></div>
+      <div class="detail-info">
+        <div class="date-row">
+          <span class="date-lbl">서버 날짜</span>
+          <input class="date-input det-sd" type="text" value="${escH(det.serverDate||'')}" placeholder="2026/02/04">
+        </div>
+        <div class="cmt-row">
+          <span class="cmt-lbl">파일명</span>
+          <input class="cmt-input det-fname" type="text" value="${escH(det.filename||'')}" placeholder="260204_detail_TOP_0070.jpg">
+        </div>
+        <div class="sec-meta" style="display:flex;align-items:center;gap:6px">
+          디테일 이미지
+          <button class="code-view-btn" data-det-code-btn title="코드 보기/수정">&lt;/&gt;</button>
+        </div>
+      </div>
+      <div class="sec-right">
+        <button class="detail-del-btn sec-del-btn">삭제</button>
+        <div class="expand-arrow" data-det-arrow>▶</div>
+      </div>
+    </div>
+    <div class="sec-gallery det-gallery" style="background:var(--surface);display:none">
+      <div class="gallery-label">이미지 미리보기 (더블클릭 → 크게 보기)</div>
+      <div class="gallery-grid"></div>
+      <div class="gallery-sel-bar"></div>
+    </div>
+    <div class="detail-code-panel code-panel">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;padding:10px 14px 0">
+        <span style="font-size:11px;color:var(--tm)">디테일 이미지 HTML 코드를 직접 수정할 수 있습니다.</span>
+        <button class="btn btn-sm det-code-reset" style="font-size:11px">초기화</button>
+      </div>
+      <div style="padding:0 14px 12px">
+        <textarea class="det-code-ta" style="width:100%;font-family:var(--mono);font-size:11px;line-height:1.7;min-height:80px;resize:vertical;background:var(--card);border:1px solid var(--border);border-radius:7px;padding:8px 10px;color:var(--t);outline:none" placeholder="HTML 생성 후 표시됩니다."></textarea>
+      </div>
+    </div>`;
+
+  const thumbEl  = wrap.querySelector('.detail-thumb');
+  const dragH    = wrap.querySelector('.drag-handle');
+  const sdInp    = wrap.querySelector('.det-sd');
+  const fnameInp = wrap.querySelector('.det-fname');
+  const detGallery = wrap.querySelector('.det-gallery');
+  const detArrow   = wrap.querySelector('[data-det-arrow]');
+  const detGrid    = wrap.querySelector('.det-gallery .gallery-grid');
+  const delBtn   = wrap.querySelector('.detail-del-btn');
+  const codeBtn  = wrap.querySelector('[data-det-code-btn]');
+  const codePanel= wrap.querySelector('.detail-code-panel');
+  const codeTa   = wrap.querySelector('.det-code-ta');
+  const resetBtn = wrap.querySelector('.det-code-reset');
+
+  // 확장자 보장 헬퍼
+  const ensureExt = fn => /\.\w+$/.test(fn) ? fn : fn + '.jpg';
+  const getDetImages = () => det.filename ? [{ filename: ensureExt(det.filename) }] : [];
+
+  // 갤러리 펼침/닫기
+  wrap.querySelector('.detail-header').addEventListener('click', e => {
+    if ([dragH, sdInp, fnameInp, delBtn, codeBtn].some(el => el && el.contains(e.target))) return;
+    const open = detGallery.style.display === 'block';
+    detGallery.style.display = open ? 'none' : 'block';
+    detArrow.classList.toggle('open', !open);
+    if (!open) {
+      const fakeSec = { id: '__det__' + det.id, serverDate: det.serverDate||'', images: getDetImages() };
+      detGrid.innerHTML = renderGalleryItems(fakeSec, -1);
+      requestAnimationFrame(() => {
+        loadGalleryImages(detGrid);
+        bindGalleryDrag(wrap, null, {
+          getId:     () => '__det__' + det.id,
+          getImages: getDetImages,
+          getUrls:   () => getDetImages().map(img => imgUrl(det.serverDate||'', img.filename)),
+          onRefresh: () => {
+            const fakeSec2 = { id: '__det__' + det.id, serverDate: det.serverDate||'', images: getDetImages() };
+            detGrid.innerHTML = renderGalleryItems(fakeSec2, -1);
+            loadGalleryImages(detGrid);
+            loadThumb(thumbEl, det.serverDate && det.filename ? imgUrl(det.serverDate, ensureExt(det.filename)) : null);
+          },
+          onDelete: () => {} // 디테일은 단일 이미지라 삭제 안 함
+        });
+      });
+    }
+  });
+
+  let _t;
+  const refreshThumb = () => {
+    const u = det.serverDate && det.filename ? imgUrl(det.serverDate, ensureExt(det.filename)) : null;
+    loadThumb(thumbEl, u);
+    // 갤러리가 열려있으면 갱신
+    if (detGallery.style.display === 'block') {
+      const fakeSec = { id: '__det__' + det.id, serverDate: det.serverDate||'', images: getDetImages() };
+      detGrid.innerHTML = renderGalleryItems(fakeSec, -1);
+      loadGalleryImages(detGrid);
+    }
+  };
+
+  sdInp.addEventListener('input', e => {
+    det.serverDate = e.target.value.trim();
+    clearTimeout(_t); _t = setTimeout(refreshThumb, 500);
+  });
+  sdInp.addEventListener('blur', e => {
+    applyNormDate(e.target); det.serverDate = e.target.value.trim();
+    clearTimeout(_t); refreshThumb();
+  });
+  fnameInp.addEventListener('input', e => {
+    det.filename = e.target.value.trim();
+    clearTimeout(_t); _t = setTimeout(refreshThumb, 500);
+  });
+
+  // 코드 보기
+  codeBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    const open = codePanel.classList.toggle('open');
+    codeBtn.classList.toggle('active', open);
+    if (open && !codeTa.value) codeTa.value = det._rawCode || buildDetailHtml(det);
+  });
+  codeTa.addEventListener('input', () => {
+    det._rawCode = codeTa.value;
+    let badge = wrap.querySelector('.code-edited-badge');
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = 'code-edited-badge'; badge.textContent = '수정됨';
+      wrap.querySelector('.sec-meta').appendChild(badge);
+    }
+  });
+  resetBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    delete det._rawCode;
+    codeTa.value = buildDetailHtml(det);
+    wrap.querySelector('.code-edited-badge')?.remove();
+    toast('코드 초기화됨');
+  });
+
+  delBtn.addEventListener('click', () => {
+    if (!confirm('디테일 이미지를 삭제할까요?')) return;
+    detailSections.splice(i, 1);
+    renderAll(); toast('디테일 삭제됨');
+  });
+
+  // 드래그 — dot 핸들에 직접 이벤트 (버블링 문제 회피)
+  dragH.addEventListener('mousedown', () => { wrap.draggable = true; });
+  dragH.addEventListener('mouseup', () => { wrap.draggable = false; });
+  wrap.draggable = false;
+  wrap.addEventListener('dragstart', e => {
+    if (!wrap.draggable) { e.preventDefault(); return; }
+    detailDragIdx = i;
+    e.dataTransfer.effectAllowed = 'move';
+    e.stopPropagation();
+    setTimeout(() => wrap.classList.add('dragging'), 0);
+  });
+  wrap.addEventListener('dragend', () => {
+    wrap.draggable = false;
+    wrap.classList.remove('dragging');
+    document.querySelectorAll('#detail-list .add-zone.drop-target')
+      .forEach(z => z.classList.remove('drop-target'));
+    detailDragIdx = null;
+  });
+
+  requestAnimationFrame(refreshThumb);
+  if (det._rawCode) {
+    const badge = document.createElement('span');
+    badge.className = 'code-edited-badge'; badge.textContent = '수정됨';
+    wrap.querySelector('.sec-meta').appendChild(badge);
+  }
+  return wrap;
+}
+
+function makeDetailAddZone() {
+  const div = document.createElement('div');
+  div.className = 'add-zone';
+  div.style.marginTop = '8px';
+  div.innerHTML = `
+    <div class="add-zone-inner">
+      <div class="add-line"></div>
+      <button class="add-btn-inline det-add-btn">＋ 디테일 추가</button>
+      <div class="add-line"></div>
+    </div>
+    <div class="add-panel" style="display:none">
+      <div class="field-row" style="margin-bottom:8px">
+        <div class="field" style="max-width:150px">
+          <label style="font-size:11px;color:var(--tm)">서버 날짜</label>
+          <input type="text" class="det-ap-date" placeholder="2026/02/04">
+        </div>
+        <div class="field">
+          <label style="font-size:11px;color:var(--tm)">파일명 (확장자 포함)</label>
+          <input type="text" class="det-ap-fname" placeholder="260204_detail_TOP_0070.jpg">
+        </div>
+      </div>
+      <div class="add-panel-row">
+        <button class="btn btn-primary btn-sm det-ap-add">추가</button>
+        <button class="btn btn-sm det-ap-cancel">취소</button>
+      </div>
+    </div>`;
+
+  const btn   = div.querySelector('.det-add-btn');
+  const panel = div.querySelector('.add-panel');
+  btn.addEventListener('click', () => { panel.style.display=''; btn.style.display='none'; div.querySelector('.det-ap-date').focus(); });
+  div.querySelector('.det-ap-date').addEventListener('blur', e => applyNormDate(e.target));
+  div.querySelector('.det-ap-cancel').addEventListener('click', () => { panel.style.display='none'; btn.style.display=''; });
+  div.querySelector('.det-ap-add').addEventListener('click', () => {
+    const sd = div.querySelector('.det-ap-date').value.trim();
+    const fn = div.querySelector('.det-ap-fname').value.trim();
+    if (!sd) { toast('서버 날짜를 입력해 주세요'); return; }
+    if (!fn) { toast('파일명을 입력해 주세요');    return; }
+    imgCheckCache.delete(imgUrl(sd, fn));
+    detailSections.push({ id: uid(), serverDate: sd, filename: fn });
+    renderAll(); toast('디테일 추가됨');
+  });
+  return div;
+}
+
+// ──────────────────────────────────────────
+//  인트로 드롭존 (카드 사이)
+// ──────────────────────────────────────────
+function makeIntroDropZone(insertIdx) {
+  const div = document.createElement('div');
+  div.className = 'add-zone';
+  div.style.padding = '2px 0';
+  div.addEventListener('dragover', e => {
+    if (introDragIdx === null || galDragSec !== null) return;
+    e.preventDefault(); e.stopPropagation();
+    document.querySelectorAll('#intro-container .add-zone.drop-target')
+      .forEach(z => z.classList.remove('drop-target'));
+    div.classList.add('drop-target');
+  });
+  div.addEventListener('dragleave', e => {
+    if (!div.contains(e.relatedTarget)) div.classList.remove('drop-target');
+  });
+  div.addEventListener('drop', e => {
+    e.preventDefault(); e.stopPropagation();
+    div.classList.remove('drop-target');
+    if (introDragIdx === null) return;
+    const src = introDragIdx; introDragIdx = null;
+    if (insertIdx === src || insertIdx === src + 1) return;
+    const at = insertIdx > src ? insertIdx - 1 : insertIdx;
+    const [moved] = introSections.splice(src, 1);
+    introSections.splice(at, 0, moved);
+    renderAll(); toast('인트로 순서 변경됨');
+  });
+  return div;
+}
+
+// ──────────────────────────────────────────
+//  디테일 드롭존 (카드 사이)
+// ──────────────────────────────────────────
+function makeDetailDropZone(insertIdx) {
+  const div = document.createElement('div');
+  div.className = 'add-zone';
+  div.style.padding = '2px 0';
+  div.addEventListener('dragover', e => {
+    if (detailDragIdx === null || galDragSec !== null) return;
+    e.preventDefault(); e.stopPropagation();
+    document.querySelectorAll('#detail-list .add-zone.drop-target')
+      .forEach(z => z.classList.remove('drop-target'));
+    div.classList.add('drop-target');
+  });
+  div.addEventListener('dragleave', e => {
+    if (!div.contains(e.relatedTarget)) div.classList.remove('drop-target');
+  });
+  div.addEventListener('drop', e => {
+    e.preventDefault(); e.stopPropagation();
+    div.classList.remove('drop-target');
+    if (detailDragIdx === null) return;
+    const src = detailDragIdx; detailDragIdx = null;
+    if (insertIdx === src || insertIdx === src + 1) return;
+    const at = insertIdx > src ? insertIdx - 1 : insertIdx;
+    const [moved] = detailSections.splice(src, 1);
+    detailSections.splice(at, 0, moved);
+    renderAll(); toast('디테일 순서 변경됨');
+  });
+  return div;
+}
+
+function buildDetailHtml(det) {
+  if (!det.serverDate || !det.filename) return '';
+  const BR5 = '\t<br>\n\t<br>\n\t<br>\n\t<br>\n\t<br>\n';
+  const fn = /\.\w+$/.test(det.filename) ? det.filename : det.filename + '.jpg';
+  return `\n\t<!--디테일-->\n\n\t<p style="text-align: center;"><img src="${imgUrl(det.serverDate, fn)}"></p>\n${BR5}\n`;
+}
 function makeSectionCard(sec, i) {
   const wrap = document.createElement('div');
   wrap.className = 'sec-card'; wrap.dataset.secid = sec.id;
@@ -774,21 +1148,23 @@ function makeSectionCard(sec, i) {
     badge.textContent = '수정됨';
     wrap.querySelector('.sec-meta').appendChild(badge);
   }
-  wrap.draggable = true;
+  dragH.addEventListener('mousedown', () => { wrap.draggable = true; });
+  dragH.addEventListener('mouseup',   () => { wrap.draggable = false; });
+  wrap.draggable = false;
   wrap.addEventListener('dragstart', e => {
-    if (!dragH.contains(e.target) && wrap !== e.target) { e.preventDefault(); return; }
+    if (!wrap.draggable) { e.preventDefault(); return; }
     dragSrcIdx = i; e.dataTransfer.effectAllowed = 'move';
+    e.stopPropagation();
     setTimeout(() => wrap.classList.add('dragging'), 0);
   });
   wrap.addEventListener('dragend', () => {
+    wrap.draggable = false;
     wrap.classList.remove('dragging');
     document.querySelectorAll('.add-zone.drop-target').forEach(el => el.classList.remove('drop-target'));
   });
   wrap.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); });
   wrap.addEventListener('dragleave', () => {});
-  wrap.addEventListener('drop', e => {
-    e.preventDefault(); e.stopPropagation();
-  });
+  wrap.addEventListener('drop', e => { e.preventDefault(); e.stopPropagation(); });
 
   // DOM 부착 후 썸네일 비동기 로드
   const thumbEl = wrap.querySelector('.sec-thumb');
@@ -809,7 +1185,7 @@ function renderGalleryItems(sec, secIdx) {
     const isSel = sel.has(img.filename);
     return `<div class="gal-img${isSel?' selected':''}" data-sec="${secIdx}" data-img="${n}" data-filename="${escQ(img.filename)}" data-url="${escQ(url)}" draggable="true">
       <div class="gal-num">${n+1}</div>
-      ${isSel?'<div class="gal-sel-check">✓</div>':''}<button class="gal-del" onclick="deleteImage(${secIdx},${n},event)">✕</button>
+      ${isSel?'<div class="gal-sel-check">✓</div>':''}<button class="gal-del">✕</button>
     </div>`;
   }).join('');
 }
@@ -859,14 +1235,13 @@ function refreshGallery(wrap, si) {
   updateSelUI(wrap, si);
 }
 
-function deleteImage(si, ni, e) {
-  e.stopPropagation();
+function deleteImage(si, ni) {
   pushUndo();
   const filename = sections[si].images[ni]?.filename;
   sections[si].images.splice(ni, 1);
   if (filename) { const s = galSelected.get(sections[si].id); if (s) s.delete(filename); }
-  const cards = document.querySelectorAll('.sec-card');
-  if (cards[si]) { refreshGallery(cards[si], si); updateSelUI(cards[si], si); }
+  const card = document.querySelector(`.sec-card[data-secid="${sections[si].id}"]`);
+  if (card) { refreshGallery(card, si); updateSelUI(card, si); }
   toast('이미지 삭제됨');
 }
 
@@ -895,78 +1270,111 @@ function updateSelUI(wrap, si) {
 }
 
 // ── Drag & click ──
-function bindGalleryDrag(wrap, si) {
+// opts.getImages()  → 현재 이미지 배열 반환
+// opts.getId()      → 선택 상태 관리용 고유 ID
+// opts.getUrls()    → 라이트박스용 URL 배열
+// opts.onRefresh()  → 이미지 변경 후 갤러리/썸네일 갱신
+// opts.onDelete(n)  → n번 이미지 삭제
+// si               → sections[] 인덱스 (일반 섹션), null이면 콜백 방식 사용
+function bindGalleryDrag(wrap, si, opts) {
+  // opts 없으면 기존 sections[si] 직접 참조 방식
+  const useCallback = !!opts;
+  const getImages = useCallback ? opts.getImages : () => sections[si].images;
+  const getId     = useCallback ? opts.getId     : () => sections[si].id;
+  const getUrls   = useCallback ? opts.getUrls   : () => sections[si].images.map(img => imgUrl(sections[si].serverDate, img.filename));
+  const onRefresh = useCallback ? opts.onRefresh : () => { refreshGallery(wrap, si); updateSelUI(wrap, si); };
+  const onDelete  = useCallback ? opts.onDelete  : (n) => {
+    pushUndo();
+    const filename = sections[si].images[n]?.filename;
+    sections[si].images.splice(n, 1);
+    if (filename) { const s = galSelected.get(sections[si].id); if (s) s.delete(filename); }
+    refreshGallery(wrap, si); updateSelUI(wrap, si);
+    toast('이미지 삭제됨');
+  };
+
   wrap.querySelectorAll('.gal-img').forEach(el => {
     let _clickT = null;
 
     el.addEventListener('dblclick', e => {
       e.stopPropagation();
-      // 대기 중인 단일 클릭 취소
       if (_clickT) { clearTimeout(_clickT); _clickT = null; }
-      const sec = sections[si];
-      const urls = sec.images.map(img => imgUrl(sec.serverDate, img.filename));
-      const idx  = +el.dataset.img;
-      lbOpen(urls, idx);
+      const urls = getUrls();
+      lbOpen(urls, +el.dataset.img);
     });
 
     el.addEventListener('click', e => {
       if (e.target.classList.contains('gal-del')) return;
       e.stopPropagation();
-      // 이미 대기 중이면 무시 (dblclick 대기 중)
       if (_clickT) { clearTimeout(_clickT); _clickT = null; return; }
-
-      // dblclick 가능성 있는 이벤트는 플래그 복사
-      const ev = {
-        shiftKey: e.shiftKey,
-        ctrlKey:  e.ctrlKey,
-        metaKey:  e.metaKey,
-        altKey:   e.altKey,
-      };
-
+      const ev = { shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey, altKey: e.altKey };
       _clickT = setTimeout(() => {
         _clickT = null;
-        const sec = sections[si];
+        const id = getId();
+        const images = getImages();
         const fn = el.dataset.filename; if (!fn) return;
-        if (!galSelected.has(sec.id)) galSelected.set(sec.id, new Set());
-        const sel = galSelected.get(sec.id);
-
-        if (ev.shiftKey && galLastClick.has(sec.id)) {
-          const last = galLastClick.get(sec.id);
-          const imgs = sec.images;
-          const li = imgs.findIndex(img => img.filename === last);
+        if (!galSelected.has(id)) galSelected.set(id, new Set());
+        const sel = galSelected.get(id);
+        if (ev.shiftKey && galLastClick.has(id)) {
+          const last = galLastClick.get(id);
+          const li = images.findIndex(img => img.filename === last);
           const ci = +el.dataset.img;
           const [fr, to] = [Math.min(li, ci), Math.max(li, ci)];
-          for (let k = fr; k <= to; k++) sel.add(imgs[k].filename);
+          for (let k = fr; k <= to; k++) sel.add(images[k].filename);
         } else if (ev.ctrlKey || ev.metaKey || ev.altKey) {
           if (sel.has(fn)) sel.delete(fn); else sel.add(fn);
-          galLastClick.set(sec.id, fn);
+          galLastClick.set(id, fn);
         } else {
           sel.clear(); sel.add(fn);
-          galLastClick.set(sec.id, fn);
+          galLastClick.set(id, fn);
         }
-        updateSelUI(wrap, si);
+        // 선택 바 업데이트
+        const bar = wrap.querySelector('.gallery-sel-bar');
+        if (bar) {
+          if (sel.size === 0) { bar.style.display='none'; bar.innerHTML=''; }
+          else {
+            bar.style.display = 'flex';
+            bar.innerHTML = `<span class="gallery-sel-count">${sel.size}개 선택됨</span><button class="gallery-sel-del">삭제</button><button class="gallery-sel-clear">선택 해제</button>`;
+            bar.querySelector('.gallery-sel-del').onclick = () => {
+              pushUndo();
+              const cnt = sel.size;
+              const imgs = getImages();
+              const keep = imgs.filter(img => !sel.has(img.filename));
+              // 배열 in-place 업데이트
+              imgs.length = 0; keep.forEach(img => imgs.push(img));
+              galSelected.set(id, new Set());
+              onRefresh(); toast(`${cnt}개 삭제됨`);
+            };
+            bar.querySelector('.gallery-sel-clear').onclick = () => {
+              galSelected.set(id, new Set());
+              wrap.querySelectorAll('.gal-img.selected').forEach(e2 => e2.classList.remove('selected'));
+              wrap.querySelectorAll('.gal-sel-check').forEach(e2 => e2.remove());
+              bar.style.display='none'; bar.innerHTML='';
+            };
+          }
+        }
         wrap.querySelectorAll('.gal-img').forEach(item => {
           const f = item.dataset.filename;
           const isSel = sel.has(f);
           item.classList.toggle('selected', isSel);
           const chk = item.querySelector('.gal-sel-check');
-          if (isSel && !chk) {
-            const d = document.createElement('div');
-            d.className = 'gal-sel-check';
-            d.textContent = '✓';
-            item.appendChild(d);
-          } else if (!isSel && chk) {
-            chk.remove();
-          }
+          if (isSel && !chk) { const d = document.createElement('div'); d.className='gal-sel-check'; d.textContent='✓'; item.appendChild(d); }
+          else if (!isSel && chk) chk.remove();
         });
       }, 220);
     });
+
+    // gal-del 버튼
+    el.querySelector('.gal-del')?.addEventListener('click', e => {
+      e.stopPropagation();
+      onDelete(+el.dataset.img, e);
+    });
+
     el.addEventListener('dragstart', e => {
-      const sec = sections[si];
-      const sel = galSelected.get(sec.id);
+      const id = getId();
+      const sel = galSelected.get(id);
       const fn = el.dataset.filename;
       const isMulti = sel && sel.size > 1 && sel.has(fn);
-      galDragSec = {si, imgIdx: +el.dataset.img, isMulti};
+      galDragSec = {si: useCallback ? '__cb__' : si, imgIdx: +el.dataset.img, isMulti, getId, getImages, onRefresh};
       e.dataTransfer.effectAllowed = 'move'; e.stopPropagation();
       setTimeout(() => {
         if (isMulti) wrap.querySelectorAll('.gal-img.selected').forEach(item => item.classList.add('gal-dragging'));
@@ -979,7 +1387,12 @@ function bindGalleryDrag(wrap, si) {
     });
     el.addEventListener('dragover', e => {
       e.preventDefault(); e.stopPropagation();
-      if (!galDragSec || galDragSec.si !== si) return;
+      if (!galDragSec) return;
+      // 같은 갤러리인지 확인
+      const sameGallery = useCallback
+        ? galDragSec.getId === getId
+        : galDragSec.si === si;
+      if (!sameGallery) return;
       wrap.querySelectorAll('.gdrop').forEach(item => { if (item !== el) item.classList.remove('gdrop'); });
       if (!galDragSec.isMulti || !el.classList.contains('gal-dragging')) el.classList.add('gdrop');
     });
@@ -987,20 +1400,22 @@ function bindGalleryDrag(wrap, si) {
     el.addEventListener('drop', e => {
       e.preventDefault(); e.stopPropagation();
       el.classList.remove('gdrop');
-      if (!galDragSec || galDragSec.si !== si) { galDragSec = null; return; }
+      if (!galDragSec) return;
+      const sameGallery = useCallback ? galDragSec.getId === getId : galDragSec.si === si;
+      if (!sameGallery) { galDragSec = null; return; }
       const {imgIdx: fromImg, isMulti} = galDragSec;
       const toImg = +el.dataset.img;
       pushUndo();
-      const sec = sections[si];
-      const imgs = sec.images;
+      const imgs = getImages();
+      const id   = getId();
       if (isMulti) {
-        const sel = galSelected.get(sec.id) || new Set();
+        const sel = galSelected.get(id) || new Set();
         const selItems = imgs.filter(img => sel.has(img.filename));
         const rest = imgs.filter(img => !sel.has(img.filename));
         let at = rest.findIndex(img => img.filename === imgs[toImg]?.filename);
         if (at < 0) at = rest.length;
         rest.splice(at, 0, ...selItems);
-        sec.images = rest;
+        imgs.length = 0; rest.forEach(img => imgs.push(img));
         toast(`${selItems.length}개 이동됨`);
       } else {
         if (fromImg === toImg) { galDragSec = null; return; }
@@ -1008,11 +1423,9 @@ function bindGalleryDrag(wrap, si) {
         imgs.splice(toImg, 0, mv);
         toast('이미지 순서 변경됨');
       }
-      // 드래그 완료 후 선택 해제
-      galSelected.set(sec.id, new Set());
+      galSelected.set(id, new Set());
       galDragSec = null;
-      refreshGallery(wrap, si);
-      updateSelUI(wrap, si);
+      onRefresh();
     });
   });
 }
@@ -1113,16 +1526,16 @@ function lbMove(dir, e) {
 // ──────────────────────────────────────────
 //  섹션 HTML 빌더 (코드보기 미리보기 + raw override용)
 // ──────────────────────────────────────────
-function buildIntroHtml(validSet) {
-  if (!introSection || !introSection.images.length) return '';
+function buildIntroHtml(intro, validSet) {
+  if (!intro || !intro.images.length) return '';
   const BR5 = '\t<br>\n\t<br>\n\t<br>\n\t<br>\n\t<br>\n';
   const imgs = validSet
-    ? introSection.images.filter(img => validSet.has(imgUrl(introSection.serverDate, img.filename)))
-    : introSection.images;
+    ? intro.images.filter(img => validSet.has(imgUrl(intro.serverDate, img.filename)))
+    : intro.images;
   if (!imgs.length) return '';
   let html = `\t<!--써머리-->\n\n`;
   imgs.forEach((img, idx) => {
-    const u = imgUrl(introSection.serverDate, img.filename);
+    const u = imgUrl(intro.serverDate, img.filename);
     html += `\t<p style="text-align: center;"><img src="${u}"></p>\n`;
     if (idx === 0 || idx === imgs.length - 1) html += BR5 + '\n';
   });
@@ -1162,13 +1575,14 @@ async function generate() {
 
   // URL 수집 (인트로 + 섹션)
   const allUrls = [];
-  if (introSection) {
-    introSection.images.forEach(img => {
-      if (img.filename && introSection.serverDate)
-        allUrls.push(imgUrl(introSection.serverDate, img.filename));
+  introSections.forEach(intro => {
+    intro.images.forEach(img => {
+      if (img.filename && intro.serverDate)
+        allUrls.push(imgUrl(intro.serverDate, img.filename));
     });
-  }
+  });
   sections.forEach(s => s.images.forEach(img => allUrls.push(imgUrl(s.serverDate, img.filename))));
+  detailSections.forEach(det => { if (det.serverDate && det.filename) allUrls.push(imgUrl(det.serverDate, det.filename)); });
   if (!allUrls.length) { toast('이미지를 추가해 주세요'); return; }
 
   const genBtn      = document.getElementById('gen-btn');
@@ -1222,19 +1636,15 @@ async function generate() {
   // 최상단 <br> 5개는 항상 포함
   let html = `<div style="text-align: center;">\n\t<!--상세-->\n\n${BR5}\n`;
 
-  // 인트로 (써머리 블록) — rawCode 있으면 그대로, 없으면 자동 생성
-  if (introSection && introSection.images.length) {
-    if (introSection._rawCode) {
-      html += introSection._rawCode;
-    } else {
-      const validIntro = introSection.images.filter(img =>
-        validSet.has(imgUrl(introSection.serverDate, img.filename)));
-      if (validIntro.length) {
-        html += buildIntroHtml(validSet);
-        if (showWarn) {
-          html += `\t<br>\n\t *밝은 컬러의 경우 비칠 우려가 있으니\n\t<br> 스킨 컬러의 이너를 착용하시는걸 권장합니다\n\t<br>\n\t<br>\n\t<br>\n\t<br>\n\t<br>\n\t<br>\n`;
-        }
-      }
+  // 인트로 (써머리 블록들) — 순서대로 출력
+  for (const intro of introSections) {
+    if (!intro.images.length) continue;
+    if (intro._rawCode) { html += intro._rawCode; continue; }
+    const built = buildIntroHtml(intro, validSet);
+    if (!built) continue;
+    html += built;
+    if (showWarn) {
+      html += `\t<br>\n\t *밝은 컬러의 경우 비칠 우려가 있으니\n\t<br> 스킨 컬러의 이너를 착용하시는걸 권장합니다\n\t<br>\n\t<br>\n\t<br>\n\t<br>\n\t<br>\n\t<br>\n`;
     }
   }
 
@@ -1252,17 +1662,28 @@ async function generate() {
     const indented = snapfitCode.split('\n').map(line => line.trim() ? '\t' + line : '').join('\n');
     html += `\n\t<!--스냅핏-->\n${indented}\n`;
   }
+
+  // 디테일 섹션
+  for (const det of detailSections) {
+    if (det._rawCode) { html += det._rawCode; continue; }
+    if (!det.serverDate || !det.filename) continue;
+    const u = imgUrl(det.serverDate, det.filename);
+    if (!validSet.has(u)) continue;
+    html += buildDetailHtml(det);
+  }
+
   html += `\n</div>`;
 
   // 인트로 코드 패널 동기화
-  const introCardEl = document.querySelector('.intro-fixed-card');
-  if (introCardEl) {
-    const introPanel = introCardEl.querySelector('.intro-code-panel');
-    const introTa    = introCardEl.querySelector('.intro-code-textarea');
-    if (introPanel?.classList.contains('open') && introTa) {
-      introTa.value = introSection?._rawCode || buildIntroHtml(validSet) || '';
+  document.querySelectorAll('.intro-fixed-card').forEach((card, idx) => {
+    const intro = introSections[idx];
+    if (!intro) return;
+    const panel = card.querySelector('.intro-code-panel');
+    const ta    = card.querySelector('.intro-code-ta');
+    if (panel?.classList.contains('open') && ta) {
+      ta.value = intro._rawCode || buildIntroHtml(intro, validSet) || '';
     }
-  }
+  });
 
   // 섹션 코드 패널 동기화
   sections.forEach(sec => {
@@ -1275,9 +1696,20 @@ async function generate() {
     }
   });
 
+  // 디테일 코드 패널 동기화
+  detailSections.forEach(det => {
+    const card = document.querySelector(`.detail-card[data-detid="${det.id}"]`);
+    if (!card) return;
+    const panel = card.querySelector('.detail-code-panel');
+    const ta    = card.querySelector('.det-code-ta');
+    if (panel?.classList.contains('open') && ta) {
+      ta.value = det._rawCode || buildDetailHtml(det);
+    }
+  });
+
   document.getElementById('out-html').value = html;
   const tot = sections.reduce((s, sec) => s + sec.images.length, 0);
-  const introCount = introSection ? introSection.images.length : 0;
+  const introCount = introSections.reduce((s,intro) => s + intro.images.length, 0);
   document.getElementById('out-meta').textContent =
     `섹션 ${sections.length}개 · 이미지 ${tot}장` + (introCount ? ` · 인트로 ${introCount}장` : '');
   document.getElementById('output-wrap').style.display = '';
