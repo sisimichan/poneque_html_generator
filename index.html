@@ -506,19 +506,27 @@ function resolveIntroFilenames(raw) {
 function resolveFilenames(raw) {
   const parts = raw.split(',').map(s => s.trim()).filter(Boolean);
   if (parts.length === 1) {
-    const m = parts[0].match(/^(.+)_(\d+)(\.\w+)?$/i);
-    if (m) {
-      const stem = m[1], max = parseInt(m[2], 10), ext = m[3] || '.jpg';
+    const t = parts[0];
+    // 패턴 1: base_25.jpg  → base_1.jpg ~ base_25.jpg
+    const m1 = t.match(/^(.+)_(\d+)(\.\w+)?$/i);
+    if (m1) {
+      const stem = m1[1], max = parseInt(m1[2], 10), ext = m1[3] || '.jpg';
       if (max >= 1 && max <= 300) return Array.from({length: max}, (_, i) => `${stem}_${i+1}${ext}`);
+    }
+    // 패턴 2: base_25_  → base_1_ ~ base_25_  (후미 밑줄 포함, 확장자 없음)
+    const m2 = t.match(/^(.+)_(\d+)_(\.\w+)?$/i);
+    if (m2) {
+      const stem = m2[1], max = parseInt(m2[2], 10), ext = m2[3] || '';
+      if (max >= 1 && max <= 300) return Array.from({length: max}, (_, i) => `${stem}_${i+1}_${ext}`);
     }
   }
   let base = '';
   const out = [];
   for (const p of parts) {
-    if (p.startsWith('_')) { if (base) out.push(base.replace(/_(\d+)(\.\w+)?$/, '') + p); }
+    if (p.startsWith('_')) { if (base) out.push(base.replace(/_(\d+)_?(\.\w+)?$/, '') + p); }
     else { base = p; out.push(p); }
   }
-  return out.map(f => /\.\w+$/.test(f) ? f : f + '.jpg');
+  return out.map(f => (/\.\w+$/.test(f) || f.endsWith('_')) ? f : f + '.jpg');
 }
 function extractBase(filename) {
   // greedy: 마지막 _숫자(.확장자)? 패턴에서 끊기
@@ -734,8 +742,20 @@ function makeIntroCard(intro, i) {
     if (open) requestAnimationFrame(() => loadGalleryImages(gallery.querySelector('.gallery-grid')));
   });
 
-
-  wrap.addEventListener('dragover', e => {
+  // 드래그 — dragH 자체에 draggable
+  dragH.draggable = true;
+  dragH.addEventListener('dragstart', e => {
+    introDragIdx = i;
+    e.dataTransfer.effectAllowed = 'move';
+    e.stopPropagation();
+    setTimeout(() => wrap.classList.add('dragging'), 0);
+  });
+  dragH.addEventListener('dragend', () => {
+    wrap.classList.remove('dragging', 'drop-before', 'drop-after');
+    document.querySelectorAll('.intro-fixed-card.drop-before,.intro-fixed-card.drop-after')
+      .forEach(el => el.classList.remove('drop-before', 'drop-after'));
+    introDragIdx = null;
+  });  wrap.addEventListener('dragover', e => {
     if (introDragIdx === null || introDragIdx === i || galDragSec !== null) return;
     e.preventDefault(); e.stopPropagation();
     const rect = wrap.getBoundingClientRect();
@@ -981,6 +1001,21 @@ function makeDetailCard(det, i) {
   // 확장자 보장 헬퍼
   const ensureExt = fn => /\.\w+$/.test(fn) ? fn : fn + '.jpg';
   const getDetImages = () => det.filename ? [{ filename: ensureExt(det.filename) }] : [];
+
+  // 드래그 — dragH 자체에 draggable
+  dragH.draggable = true;
+  dragH.addEventListener('dragstart', e => {
+    detailDragIdx = i;
+    e.dataTransfer.effectAllowed = 'move';
+    e.stopPropagation();
+    setTimeout(() => wrap.classList.add('dragging'), 0);
+  });
+  dragH.addEventListener('dragend', () => {
+    wrap.classList.remove('dragging', 'drop-before', 'drop-after');
+    document.querySelectorAll('.detail-card.drop-before,.detail-card.drop-after')
+      .forEach(el => el.classList.remove('drop-before', 'drop-after'));
+    detailDragIdx = null;
+  });
 
   // 갤러리 펼침/닫기
   wrap.querySelector('.detail-header').addEventListener('click', e => {
@@ -1349,14 +1384,9 @@ function makeSectionCard(sec, i) {
     wrap.classList.remove('dragging', 'drop-before', 'drop-after');
     document.querySelectorAll('.sec-card.drop-before,.sec-card.drop-after')
       .forEach(el => el.classList.remove('drop-before', 'drop-after'));
-    dragSrcIdx = null;
-  });
-  wrap.addEventListener('dragend', () => {
-    wrap.classList.remove('dragging', 'drop-before', 'drop-after');
-    document.querySelectorAll('.sec-card.drop-before,.sec-card.drop-after')
-      .forEach(el => el.classList.remove('drop-before', 'drop-after'));
     document.querySelectorAll('.add-zone.drop-target')
       .forEach(el => el.classList.remove('drop-target'));
+    dragSrcIdx = null;
   });
   wrap.addEventListener('dragover', e => {
     if (galDragSec !== null || dragSrcIdx === null || dragSrcIdx === i) return;
@@ -1937,11 +1967,6 @@ async function generate() {
     html += buildSecHtml(sec, validSet);
   }
 
-  if (snapfitCode) {
-    const indented = snapfitCode.split('\n').map(line => line.trim() ? '\t' + line : '').join('\n');
-    html += `\n\t<!--스냅핏-->\n${indented}\n`;
-  }
-
   // 디테일 섹션 — 서버에 없어도 HTML에 포함, 경고만 표시
   for (const det of detailSections) {
     if (det._rawCode) { html += det._rawCode; continue; }
@@ -1949,7 +1974,6 @@ async function generate() {
     const fn = /\.\w+$/.test(det.filename) ? det.filename : det.filename + '.jpg';
     const u = imgUrl(det.serverDate, fn);
     if (!validSet.has(u)) {
-      // 경고 표시 (카드 DOM에서 찾아 표시)
       const card = document.querySelector(`.detail-card[data-detid="${det.id}"]`);
       if (card) {
         let warn = card.querySelector('.det-warn');
@@ -1962,8 +1986,12 @@ async function generate() {
         warn.innerHTML = `<strong>⚠ 이미지가 서버에 없습니다</strong><br>· ${fn}`;
       }
     }
-    // 경고와 관계없이 항상 HTML에 출력
     html += buildDetailHtml(det);
+  }
+
+  if (snapfitCode) {
+    const indented = snapfitCode.split('\n').map(line => line.trim() ? '\t' + line : '').join('\n');
+    html += `\n\t<!--스냅핏-->\n${indented}\n`;
   }
 
   html += `\n</div>`;
